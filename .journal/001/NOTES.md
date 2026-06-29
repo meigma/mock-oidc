@@ -68,3 +68,20 @@ stronger provenance/deployment (melange/apko/cosign/SLSA from the template).
 Next: digest to developer + propose first implementation slice (likely the core OIDC
 happy path: discovery + jwks + non-interactive authorization_code + token + default
 claims, single issuer) and a phased parity roadmap.
+
+## 2026-06-29 15:20 — Pivot: non-technical PRD first (not roadmap)
+Developer redirected: before any technical roadmap, craft a typical non-technical PRD
+from the catalog — establish baseline PRODUCT behavior for parity, no endpoints/methods/
+config specifics. Wrote `.journal/001/mock-oidc-prd.md` (v0.1 draft).
+PRD structure: summary, background/problem, goals (parity G1-G6 + differentiation
+G7-G9), non-goals, personas (test author [primary], local dev, platform/QA), product
+principles, 10 core capabilities C1-C10 with P0/P1/P2 priorities (C1 token issuance,
+C2 sign-in patterns, C3 scriptable identity, C4 multi-provider, C5 lifecycle services,
+C6 test-harness+inspection, C7 local exploration, C8 two deploy modes, C9 realistic
+conditions, C10 safe positioning), user scenarios S1-S6, success criteria A1-A5,
+differentiation D1-D3, and open questions Q1-Q5.
+Notable open questions flagged for developer: Q1 embedded-mode audience (Go test suites
+are a smaller audience than upstream's JVM users — is standalone the primary product?),
+Q2 drop-in fidelity incl. quirks vs cleaner-where-buggy, Q3 internal vs public OSS,
+Q4 which extra features, Q5 interactive-surface fidelity.
+Next: developer reviews PRD; resolve open questions; then technical design / roadmap.
