@@ -103,3 +103,26 @@ No open product questions remain; remaining unknowns are technical-design (e.g. 
 test-time control/inspection is exposed against a running container).
 Next: technical design — architecture (hexagonal), Go package layout, concrete protocol
 surface, and the slice-by-slice parity roadmap, grounded in the catalog + PRD.
+
+## 2026-06-29 16:30 — Effort=ultracode; technical design workflow launched
+Developer set /effort ultracode and asked for a technical design doc enforcing (1)
+hexagonal, (2) strong typing (type system = safety system), (3) clean code; REUSE the
+Huma/Chi base; auth/authz layer goes away; dev tooling/release left untouched.
+Scouted the template base myself first: it's a full hexagonal Go API template —
+internal/adapter/http (humachi.New on chi, Registrar func(huma.API) seam, RouterDeps,
+RFC9457 problem fallbacks, raw infra routes alongside Huma, huma.NewGroup version
+groups, SpecYAML serverless OpenAPI), internal/todo (canonical vertical slice:
+todo.go/service.go/ports.go + httpapi/postgres/mocks), internal/app composition root
+(New + Option seams WithRepository/WithAuthenticator, resolveStore), cobra cli, viper
+config, observability (slog/otel/prom). Auth/authz = internal/authz (Cedar+apikey) wired
+via RouterDeps.InstallAuthz/FinalizeAuthz hooks (already nil-able) — clean to excise.
+Postgres persistence also recommended for removal (mock = in-memory, parity).
+Central design tension: OAuth2 needs form-encoded bodies + 302 redirects + HTML +
+OAuth2-error-JSON, which fight Huma's JSON-first model → workflow includes a dedicated
+Huma-feasibility researcher (context7 + go doc + template usage).
+Workflow `wf_a442cb8b-c5d` (~21 agents, xhigh): Survey (6 base + huma research) →
+Contract (binding package tree/type glossary/Huma strategy/error model/routing) →
+Design (7 sections: architecture, domain-types, app-ports, http-adapter, config-app,
+control-surface [container-first test API], roadmap) → Critique (5 lenses: hexagonal
+purity, type-safety, huma-feasibility, parity-completeness, cleancode-coherence) →
+Synthesize final TDD. Running in background.
