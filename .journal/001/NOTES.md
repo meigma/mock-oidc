@@ -85,3 +85,21 @@ are a smaller audience than upstream's JVM users — is standalone the primary p
 Q2 drop-in fidelity incl. quirks vs cleaner-where-buggy, Q3 internal vs public OSS,
 Q4 which extra features, Q5 interactive-surface fidelity.
 Next: developer reviews PRD; resolve open questions; then technical design / roadmap.
+
+## 2026-06-29 15:45 — PRD decisions resolved → v0.2
+Developer answered all 5 open questions; folded into PRD v0.2:
+- D-1 Container-first delivery. Standalone service is the primary product; NO in-process
+  embedded library for parity — tests use the container (Testcontainers-style) for the
+  "embedded" need. (Reshaped C6 test-time control, C8 delivery, added N6.)
+- D-2 Parity in intent, cleaner where upstream unclear/buggy — we do NOT replicate
+  upstream bugs/quirks (added principle P7, non-goal N8).
+- D-3 Public open-source replacement (audience = upstream's user base) → DX + trustworthy
+  distribution carry real weight.
+- D-4 Parity ONLY, no new features now. Differentiation = quality/DX/distribution, not
+  capability (reframed §10, added N7).
+- D-5 Interactive login/playground: same conceptual controllable-login pattern, faithful
+  enough for parity; UX redesign deferred to post-parity (C7 stays P2).
+No open product questions remain; remaining unknowns are technical-design (e.g. how
+test-time control/inspection is exposed against a running container).
+Next: technical design — architecture (hexagonal), Go package layout, concrete protocol
+surface, and the slice-by-slice parity roadmap, grounded in the catalog + PRD.

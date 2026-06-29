@@ -14,3 +14,10 @@
   feature catalog of the upstream Kotlin server (endpoints, 6 grants, token/claim model,
   config, test-lib + standalone surfaces, and Go-port gotchas). Read it before scoping
   any parity work.
+- Product baseline: `.journal/001/mock-oidc-prd.md` — non-technical PRD (v0.2). Locked
+  product decisions: **container-first** (standalone service is the product; no in-process
+  embedded library — tests run the container, Testcontainers-style); **parity in intent,
+  cleaner where upstream is unclear/buggy** (do not copy upstream quirks); **public OSS
+  replacement**; **parity only, no new features yet** (differentiation = quality/DX/
+  distribution); interactive login/playground match upstream's *concept*, UX redesign is
+  post-parity.
