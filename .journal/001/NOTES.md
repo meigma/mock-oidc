@@ -16,3 +16,55 @@ Current state of the world:
 - Required skills loaded: `git`, `worktrunk`. TECH_NOTES reviewed (hexagonal
   architecture, functional testing before "done", agile/iterative approach).
 Plan: wait for the developer's stated goal, then plan from there.
+
+## 2026-06-29 14:25 — Goal set: feature-parity examination of mock-oauth2-server
+Developer's goal for this repo: build a Go reimplementation of
+`navikt/mock-oauth2-server` with better architecture (hexagonal, strong typing,
+quality linting), more features, and our stronger provenance/deployment model.
+This first session is design/product focused — ignore the template scaffold for now.
+
+First task: spawn a workflow doing a deep examination of `navikt/mock-oauth2-server`
+to collect a FULL feature list, as input to planning the first implementation slice
+toward feature parity.
+
+Approach: cloned the upstream repo read-only into scratchpad
+(`scratchpad/mock-oauth2-server`, Kotlin, 83 .kt files). Scouted structure —
+clean subsystems: http/ (router, server, CORS, SSL), grant/ (6 grant handlers +
+refresh manager), token/ (provider, callbacks, key gen/provider), login/, debugger/,
+userinfo/, introspect/, templates/*.ftl, OAuth2Config + Standalone/MockOAuth2Server.
+README is comprehensive (Supported Flows, Config Reference, API Reference, JSON_CONFIG).
+Workflow design: 7 parallel examiners (docs, http-endpoints, grants, tokens, config,
+interactive, test-api-deploy) → synthesize → completeness critic → finalize markdown
+catalog.
+
+## 2026-06-29 14:55 — Examination workflow complete; catalog saved
+Workflow `wf_70149f7f-363` finished: 10 agents, ~918k tokens, 240 tool uses, ~34 min.
+Raw features by dimension: docs 59, http-endpoints 34, grants 22, tokens 29, config 33,
+interactive 25, test-api-deploy 31 (233 total) → deduped/synthesized → 8 critic gaps
+folded in → final 393-line markdown catalog.
+Artifact: `.journal/001/mock-oauth2-server-feature-catalog.md` (source of truth for
+parity planning). Source refs point at navikt/mock-oauth2-server (re-clonable).
+
+Key findings worth carrying forward:
+- Suffix-based routing → zero-config multi-issuer; `iss` = baseURL + issuerId, proxy-aware
+  (`x-forwarded-*`). Per-issuer lazy signing key, `kid = issuerId` (deterministic).
+- Endpoints: discovery (OIDC + RFC8414, identical body), jwks, authorize, token,
+  userinfo, introspect (RFC7662), revoke (RFC7009, refresh only), endsession, debugger.
+- 6 grants: authorization_code (PKCE plain/S256, only-when-verifier-present), refresh
+  (strict since 4.0.0, rotation optional), client_credentials, password (ROPC, password
+  never checked), jwt-bearer (RFC7523, sig NOT verified), token-exchange (RFC8693, sig
+  NOT verified). No client-secret validation anywhere.
+- Tokens are real signed JWTs (RSA + EC, default RS256; ES256K/ES512/EdDSA rejected).
+  Claim model: DefaultOAuth2TokenCallback (auto tid=issuerId, azp only for auth_code) vs
+  RequestMappingTokenCallback (JSON-driven, ${...} templating). Pluggable frozen clock.
+- Consumed embedded (test lib: issueToken/anyToken/enqueueCallback/takeRequest) or
+  standalone (env: JSON_CONFIG, SERVER_PORT/PORT, SERVER_HOSTNAME; /isalive; Jib image).
+- Many parity gotchas catalogued (dual form-body parsers, custom-typ fails own verify,
+  form_post-without-state → 500, lowercased error JSON, expires_in uses real clock, etc.).
+
+Our deltas vs upstream (intent): hexagonal Go, stronger typing/linting, MORE features,
+stronger provenance/deployment (melange/apko/cosign/SLSA from the template).
+
+Next: digest to developer + propose first implementation slice (likely the core OIDC
+happy path: discovery + jwks + non-interactive authorization_code + token + default
+claims, single issuer) and a phased parity roadmap.
