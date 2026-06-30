@@ -2,4 +2,4 @@
 
 | ID  | Date       | Title | Status | Summary |
 |-----|------------|-------|--------|---------|
-| 001 | 2026-06-29 | Session kickoff | in-progress | Session opened; awaiting the developer's stated goal. |
+| 001 | 2026-06-29 | Design foundation (catalog, PRD, technical design) | complete | Produced the mock-oidc design package — parity catalog, PRD v0.2, and decision-complete technical design; no code yet. |

@@ -180,3 +180,13 @@ section (the former "Open Questions / Risks"; original analysis retained beneath
    protocol JSON is clean and discovery field order holds; []byte fast-path is the fallback.
 Session-001 design package complete: catalog + PRD v0.2 + technical design (decision-complete).
 Next: begin Slice 1 (core token pipeline) or close the session.
+
+## 2026-06-29 18:17 — Close
+Closing session 001. Design-only session — NO implementation code, NO PRs (the template
+scaffold is untouched; `git ls-files .journal` on master is empty, no journal contamination).
+All work landed on `journal/jmgilman` and is pushed.
+Handoff: the design package is `.journal/001/{mock-oauth2-server-feature-catalog,
+mock-oidc-prd,mock-oidc-technical-design}.md`; durable context + pointers are in
+`.journal/TECH_NOTES.md`. SUMMARY.md written; INDEX row -> complete.
+Next session: implement Slice 1 (core token pipeline) on a fresh worktree off the default
+branch — first apply the template->mock-oidc rename and strip authz + Postgres per the TDD.
