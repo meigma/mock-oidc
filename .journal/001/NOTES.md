@@ -126,3 +126,40 @@ Design (7 sections: architecture, domain-types, app-ports, http-adapter, config-
 control-surface [container-first test API], roadmap) → Critique (5 lenses: hexagonal
 purity, type-safety, huma-feasibility, parity-completeness, cleancode-coherence) →
 Synthesize final TDD. Running in background.
+
+## 2026-06-29 17:40 — Technical design complete (after 2 synth-truncation recoveries)
+Workflow `wf_a442cb8b-c5d`: 6 base surveys + huma research → binding contract → 7 design
+sections → 5 critic lenses (55 findings, 20 high) → synthesis. Synthesis truncated TWICE
+(single-agent, then 2-pass front/back) — agents' very long final message gets tail-captured,
+losing the BEGINNING. Fixed by per-section synthesis (9 bounded agents, resume from cache).
+Final TDD: `.journal/001/mock-oidc-technical-design.md` (~4.8k lines after removing a
+duplicate Architecture section that overlapped Foundations).
+
+Key technical decisions locked (binding contract):
+- Module github.com/meigma/mock-oidc; binary cmd/mock-oidc; env prefix MOCK_OIDC_ + parity
+  aliases (SERVER_PORT>PORT>8080, JSON_CONFIG>JSON_CONFIG_PATH>./config.json).
+- Core domain pkg `internal/oidc` (pure); driven adapters `internal/oidc/{signing,memory}`;
+  driving adapters `internal/oidc/{httpapi,controlapi}`; reuse `internal/adapter/http`
+  (Huma/chi) + observability/cli/config; REMOVE authz + postgres.
+- Strong typing: closed enums (GrantType/ResponseType/SigningAlgorithm/TokenType) with
+  Valid(); parse-don't-validate smart constructors at the edge; IssuerID single path
+  segment; KeyID only from IssuerID.KeyID(); ClaimSet (no map[string]any in core).
+- Huma strategy: JSON endpoints via typed Huma ops; form bodies via RawBody parse;
+  302/HTML via raw chi/BrowserOutput; OAuth2 error envelope ({error,error_description})
+  kept SEPARATE from RFC9457 problem (control+infra keep problem+json).
+- Multi-issuer via /{issuer}/ path-param groups (clean replacement for upstream suffix
+  routing); control plane under reserved /_mock/ prefix (container-first test API).
+- Parity-in-intent divergence table: no body-lowercasing, no form_post-without-state 500,
+  no 302→400, corrected cross-issuer text, expires_in from same Clock as exp, accept at+jwt.
+- Roadmap: Slice 1 = core token pipeline (routing + discovery + jwks + client_credentials
+  + signed JWT + default claims). 3-tier testing (unit / httptest functional / Testcontainers).
+
+5 OPEN QUESTIONS need a call before implementation (in the TDD's Open Questions section):
+1. (HIGH) depguard `crypto/*` ban contradicts core PKCE/template code (crypto/sha256,
+   encoding/json) — must narrow the rule + carve-out, reconcile contract §3 + arch_test.
+2. (MED) multi-segment/nested issuer IDs unsupported by single-segment routing (parity gap).
+3. (MED) CORS default posture (default-on reflect-origin vs opt-in allowlist).
+4. (LOW) custom JOSE typ self-verification (keep typ=JWT pin vs accept at+jwt).
+5. (MED) Huma DefaultConfig SchemaLinkTransformer injects $schema + Link header → breaks
+   discovery/jwks fixed field order; must strip transformer or serve pre-serialized []byte.
+Next: developer reviews TDD + decides the 5 open questions; then begin Slice 1 (or close session).

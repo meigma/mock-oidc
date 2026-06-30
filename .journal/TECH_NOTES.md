@@ -21,3 +21,13 @@
   replacement**; **parity only, no new features yet** (differentiation = quality/DX/
   distribution); interactive login/playground match upstream's *concept*, UX redesign is
   post-parity.
+- Technical design: `.journal/001/mock-oidc-technical-design.md` — normative build
+  blueprint. Hexagonal Go reusing the template's Huma/chi base; core domain pkg
+  `internal/oidc` (pure) + driven adapters `internal/oidc/{signing,memory}` + driving
+  adapters `internal/oidc/{httpapi,controlapi}`; authz + postgres removed; strong typing
+  (closed enums, parse-don't-validate, no map[string]any in core); /{issuer}/ path-param
+  routing; container-first control plane under `/_mock/`. Slice 1 = core token pipeline.
+  Has 5 OPEN QUESTIONS to decide before implementation (see its Open Questions section) —
+  notably the depguard `crypto/*` ban vs core PKCE/template code, and Huma's default
+  SchemaLinkTransformer polluting discovery/JWKS. Module path will be github.com/meigma/
+  mock-oidc; binary cmd/mock-oidc (not yet applied to the repo).
