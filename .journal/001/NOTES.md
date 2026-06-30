@@ -163,3 +163,20 @@ Key technical decisions locked (binding contract):
 5. (MED) Huma DefaultConfig SchemaLinkTransformer injects $schema + Link header → breaks
    discovery/jwks fixed field order; must strip transformer or serve pre-serialized []byte.
 Next: developer reviews TDD + decides the 5 open questions; then begin Slice 1 (or close session).
+
+## 2026-06-29 18:05 — 5 open questions decided; TDD now decision-complete
+Developer decided all 5; folded into the TDD's renamed "## Decisions (resolved 2026-06-29)"
+section (the former "Open Questions / Risks"; original analysis retained beneath):
+1. Crypto carve-out — confirmed; it was ALREADY resolved in the body (Foundations §5):
+   ban only key-bearing signing/JOSE crypto, carve out keyless PKCE primitives
+   (sha256/subtle/base64) consistently across depguard/doc.go/arch_test. The OQ "unresolved"
+   label was a stale per-section-synthesis artifact, now corrected. Rationale recorded:
+   hexagonal purity (no key material in core; signing via Signer/KeyStore/TokenVerifier ports).
+2. Multi-segment issuer IDs — accept single-segment as a named, documented parity gap.
+3. CORS — default ON with reflect-origin + Allow-Credentials; CORSAllowedOrigins tightens.
+   (Changes template CORS from opt-in to reflect-origin-on-by-default; apply in Slice 1.)
+4. JOSE typ — verifier accepts JWT + at+jwt (RFC 9068); documented divergence. (Already in body.)
+5. Huma SchemaLinkTransformer — strip in NewAPI (clear cfg.Transformers + link hook) so
+   protocol JSON is clean and discovery field order holds; []byte fast-path is the fallback.
+Session-001 design package complete: catalog + PRD v0.2 + technical design (decision-complete).
+Next: begin Slice 1 (core token pipeline) or close the session.

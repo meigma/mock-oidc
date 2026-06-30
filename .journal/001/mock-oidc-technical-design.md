@@ -4821,9 +4821,23 @@ The R1–R4 ladder (§8.3) is applied per slice; this is how the three altitudes
 
 Plus `build`, `openapi-check` (committed spec vs regenerated — no drift), and `mockery-check` (committed mocks vs regenerated). These run on every slice; a slice is not "done" until they are green and its R3 container assertion passes.
 
-## Open Questions / Risks
+## Decisions (resolved 2026-06-29)
 
-These are the items the critics flagged that the binding contract and the rest of the design do **not** yet settle. Each needs an explicit call before implementation; none is a blocker that reopens a `DECISION`.
+The critics surfaced five items the contract and body had not all settled (full analysis retained at the end of this section). All five are now **decided**; these resolutions are normative.
+
+1. **Domain-purity crypto carve-out (was HIGH) — confirmed; already implemented in Foundations §5.** Rationale for the original ban: the core must stay free of *key-bearing* cryptography — RSA/EC signing, JOSE/JWT minting, key material, TLS, x509 — because that is an adapter concern, reached only through the `Signer`/`KeyStore`/`TokenVerifier` ports (the core never sees a private key). The blunt `crypto/*` prefix was too coarse: it also caught the *keyless* PKCE `S256` transform (`crypto/sha256`, `crypto/subtle`, `encoding/base64`), which is pure domain computation (an authorization-code validation rule — no keys, no IO). Resolution: ban only the key-bearing signing/JOSE packages and carve out the keyless primitives — already reconciled word-for-word across the depguard `oidc-core` rule, `doc.go`, and `arch_test.go`. `encoding/json` (the `${…}` claim-template decode) is stdlib, permitted, and documented in `doc.go` rather than denied. No further change.
+
+2. **Multi-segment issuer IDs — accept as a named parity gap.** Keep single-segment `/{issuer}/…`; `IssuerID` rejects `/`. Document the gap (nested/Azure-style issuers unsupported) and warn adopters; revisit a catch-all suffix-splitter only if a multi-tenant adopter needs it.
+
+3. **CORS default posture — default ON, reflect-origin.** Out of the box, reflect the request `Origin` with `Access-Control-Allow-Credentials: true` (preflight: `Allow-Methods POST, GET, OPTIONS`, echo requested headers, `204`), matching upstream's zero-config SPA support (C9/S3). `CORSAllowedOrigins`, when set, tightens to an explicit allowlist (which, with credentials, cannot legally use `*`). This changes the template's CORS middleware from opt-in to reflect-origin-on-by-default; apply in Slice 1's transport setup.
+
+4. **Custom JOSE `typ` self-verification — accept `JWT` and `at+jwt`.** The verifier accepts both (RFC 9068), so the server validates its own standards-compliant access tokens; recorded as a deliberate parity-in-intent divergence from upstream's `typ=JWT` pin. Already reflected in the `TokenVerifier` port.
+
+5. **Huma `SchemaLinkTransformer` — strip it in `NewAPI`.** Clear `cfg.Transformers` and the link `OnAddOperation` hook in the kept `internal/adapter/http.NewAPI`, so protocol JSON (discovery, JWKS, token, …) is emitted clean — no `$schema` field, no `Link` header — and the fixed discovery field order holds. Serving discovery/JWKS as pre-serialized `Body []byte` is the fallback if any residual transform interferes. Apply in Slice 1.
+
+### Original analysis (retained for context)
+
+These were the items the critics flagged before the resolutions above were taken.
 
 - **Domain-purity carve-out for keyless crypto and JSON (HIGH, unresolved).** Contract §3 forbids `internal/oidc` from importing `crypto/*`, and the depguard `oidc-core` rule + `arch_test.go` enforce a blanket `crypto/` prefix denial. Yet the design keeps two pure, keyless transforms in the core: PKCE `S256` verification (`crypto/sha256` + `crypto/subtle` + `encoding/base64`) and the `${…}` claim-template decode (`ParseClaimTemplate` over `encoding/json`, which depguard does not even deny — a silent leak). As written, the build gate would fail the very code the domain mandates. **Undecided:** amend §3 wording (from "`crypto/*`" to "crypto signing/JOSE packages") and narrow depguard/`arch_test.go` to deny only `crypto/rsa|ecdsa|ed25519|tls|x509` + the JOSE lib, with a *documented* carve-out for `crypto/sha256`/`crypto/subtle`/`encoding/base64`/`encoding/json` in `doc.go`; **or** relocate both behind ports/adapters and keep the core crypto- and json-free. All three artifacts (Contract §3, depguard config, `arch_test.go`) must end up saying the same thing.
 
