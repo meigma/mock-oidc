@@ -21,6 +21,10 @@
   replacement**; **parity only, no new features yet** (differentiation = quality/DX/
   distribution); interactive login/playground match upstream's *concept*, UX redesign is
   post-parity.
+- Execution blueprint: `.journal/002/mock-oidc-implementation-plan.md` — the working,
+  slice-by-slice implementation plan (Slices 0–6 + cross-cutting testing) that turns the
+  technical design into an ordered, file-level, functionally-gated task list. Start here to
+  implement; it defers to the technical design on any conflict. Read before beginning a slice.
 - Technical design: `.journal/001/mock-oidc-technical-design.md` — normative build
   blueprint. Hexagonal Go reusing the template's Huma/chi base; core domain pkg
   `internal/oidc` (pure) + driven adapters `internal/oidc/{signing,memory}` + driving
