@@ -85,6 +85,7 @@ type TokenService struct {
 	clock   Clock
 	codes   CodeStore         // authorization_code cache; nil until the grant is wired
 	refresh RefreshTokenStore // refresh-token persistence; nil until the grant is wired
+	rotate  bool              // rotateRefreshToken: replace the refresh token on redemption (default off)
 	newID   func() string
 	logger  *slog.Logger
 }
@@ -132,6 +133,16 @@ func WithRefreshStore(refresh RefreshTokenStore) TokenOption {
 	}
 }
 
+// WithRefreshRotation enables refresh-token rotation (rotateRefreshToken): on a
+// successful refresh_token redemption the old token is removed and a fresh
+// RefreshBareUUID token replaces it (the nonce is dropped). It defaults off, so
+// the same refresh token keeps redeeming.
+func WithRefreshRotation(rotate bool) TokenOption {
+	return func(s *TokenService) {
+		s.rotate = rotate
+	}
+}
+
 // NewTokenService wires the token use cases over the registry, key-store, and
 // signer ports plus the Clock. The jti source defaults to a random UUID and the
 // logger to a discard handler.
@@ -176,7 +187,12 @@ func (s *TokenService) Issue(
 			return TokenResponse{}, UnsupportedGrant(string(req.Grant))
 		}
 		return s.authorizationCode(ctx, issuer, req)
-	case GrantPassword, GrantRefreshToken, GrantJWTBearer, GrantTokenExchange:
+	case GrantRefreshToken:
+		if s.refresh == nil {
+			return TokenResponse{}, UnsupportedGrant(string(req.Grant))
+		}
+		return s.refreshToken(ctx, issuer, req)
+	case GrantPassword, GrantJWTBearer, GrantTokenExchange:
 		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
 	default:
 		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
@@ -271,6 +287,102 @@ func (s *TokenService) authorizationCode(
 		Scope:        req.Scopes,
 		ExpiresIn:    expiresIn(now, cb.Expiry()),
 	}, nil
+}
+
+// refreshToken redeems a refresh token: it looks up the stored record, enforces
+// the strict cross-issuer binding (the CORRECTED client text), and re-mints a
+// fresh access token — plus an id_token when the record carried a nonce — with a
+// FRESH jti/iat/exp but the SAME subject. Claim policy is replayed from the
+// stored callback (S3 resolution is stored-callback → default only; the S5
+// CallbackQueue is not consulted here). When rotateRefreshToken is enabled the
+// old token is removed and a new RefreshBareUUID token is returned; otherwise the
+// same refresh token is echoed back so it keeps redeeming.
+func (s *TokenService) refreshToken(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	rec, err := s.refresh.Lookup(ctx, issuer.ID, req.RefreshToken)
+	if err != nil {
+		return TokenResponse{}, UnknownRefreshToken()
+	}
+	if rec.Issuer != issuer.ID {
+		return TokenResponse{}, RefreshCrossIssuer()
+	}
+
+	cb := rec.Callback
+	if cb == nil {
+		cb = NewDefaultTokenCallback(issuer.ID)
+	}
+	now := s.clock.Now()
+	sub := rec.Subject
+	in := CallbackInput{Grant: GrantRefreshToken, Client: req.Client, Scopes: req.Scopes, Subject: sub}
+	alg := issuer.Key.Algorithm
+	typ := cb.TypeHeader(in)
+
+	// access_token: aud from the callback's 4-step chain; the cached nonce replayed.
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now).WithNonce(rec.Nonce)
+	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+
+	resp := TokenResponse{
+		TokenType:   TokenTypeBearer,
+		AccessToken: accessToken,
+		ExpiresIn:   expiresIn(now, cb.Expiry()),
+		Scope:       req.Scopes,
+	}
+
+	// id_token: minted only when the original grant carried a nonce (OIDC login);
+	// aud is ALWAYS [client_id] and it carries azp, matching the authcode exchange.
+	if rec.Nonce != nil {
+		idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now).
+			WithNonce(rec.Nonce).WithAZP(req.Client.ID)
+		idToken, signErr := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
+		if signErr != nil {
+			return TokenResponse{}, fmt.Errorf("sign id token: %w", signErr)
+		}
+		resp.IDToken = idToken
+	}
+
+	next, err := s.rotateRefreshToken(ctx, issuer, req.RefreshToken, rec, cb)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	resp.RefreshToken = next
+	return resp, nil
+}
+
+// rotateRefreshToken applies the rotation policy. With rotation off it returns
+// the presented token unchanged (it keeps redeeming). With rotation on it removes
+// the old token and persists a fresh RefreshBareUUID record — rotation drops the
+// nonce, so a rotated token never re-mints an id_token.
+func (s *TokenService) rotateRefreshToken(
+	ctx context.Context,
+	issuer Issuer,
+	old RefreshToken,
+	rec RefreshRecord,
+	cb TokenCallback,
+) (RefreshToken, error) {
+	if !s.rotate {
+		return old, nil
+	}
+	if err := s.refresh.Remove(ctx, old); err != nil {
+		return "", fmt.Errorf("remove rotated refresh token: %w", err)
+	}
+	next := RefreshToken(s.newID())
+	rotated := RefreshRecord{
+		Issuer:   issuer.ID,
+		Subject:  rec.Subject,
+		Nonce:    nil, // rotation drops the nonce
+		Format:   RefreshBareUUID,
+		Callback: cb,
+	}
+	if err := s.refresh.Save(ctx, issuer.ID, next, rotated); err != nil {
+		return "", fmt.Errorf("persist rotated refresh token: %w", err)
+	}
+	return next, nil
 }
 
 // issueRefresh mints and persists the refresh token for a grant. The domain

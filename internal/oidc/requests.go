@@ -17,6 +17,9 @@ type TokenRequest struct {
 	Code         AuthorizationCode // the code being redeemed
 	CodeVerifier string            // PKCE code_verifier (may be empty when no challenge was registered)
 	RedirectURI  string            // captured, intentionally NOT validated (parity)
+
+	// refresh_token grant parameter, attached via WithRefreshToken.
+	RefreshToken RefreshToken // the refresh token being redeemed
 }
 
 // NewTokenRequest builds a TokenRequest for the given issuer, grant, and client.
@@ -38,6 +41,13 @@ func (r TokenRequest) WithAuthorizationCode(code AuthorizationCode, verifier, re
 	r.Code = code
 	r.CodeVerifier = verifier
 	r.RedirectURI = redirectURI
+	return r
+}
+
+// WithRefreshToken returns a copy of the request carrying the refresh_token
+// grant parameter: the opaque refresh token being redeemed.
+func (r TokenRequest) WithRefreshToken(tok RefreshToken) TokenRequest {
+	r.RefreshToken = tok
 	return r
 }
 
