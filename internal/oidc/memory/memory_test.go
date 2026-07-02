@@ -48,6 +48,28 @@ func TestIssuerRegistrySeedsConfiguredRecords(t *testing.T) {
 	assert.Len(t, rec.Callbacks, 1)
 }
 
+func TestCodeStoreSingleUse(t *testing.T) {
+	t.Parallel()
+
+	store := memory.NewCodeStore()
+	ctx := context.Background()
+	rec := oidc.CodeRecord{Issuer: "default", RedirectURI: "https://app/cb"}
+
+	require.NoError(t, store.Save(ctx, "code-1", rec))
+
+	got, err := store.Take(ctx, "code-1")
+	require.NoError(t, err)
+	assert.Equal(t, rec, got)
+
+	// Second Take of the same code is a miss — the code was burned.
+	_, err = store.Take(ctx, "code-1")
+	require.ErrorIs(t, err, memory.ErrCodeNotFound)
+
+	// An unknown code is also a miss.
+	_, err = store.Take(ctx, "never-issued")
+	assert.ErrorIs(t, err, memory.ErrCodeNotFound)
+}
+
 func TestClockFreezeAdvanceUnfreeze(t *testing.T) {
 	t.Parallel()
 
