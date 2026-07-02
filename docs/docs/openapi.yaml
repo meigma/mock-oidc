@@ -88,6 +88,33 @@ info:
   version: dev
 openapi: 3.0.3
 paths:
+  /favicon.ico:
+    get:
+      operationId: favicon
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Favicon (empty 200)
+      tags:
+        - OIDC
   /{issuer}/.well-known/oauth-authorization-server:
     get:
       operationId: discovery-oauth
@@ -256,6 +283,182 @@ paths:
       summary: OIDC/OAuth2 provider metadata
       tags:
         - OIDC
+  /{issuer}/authorize:
+    get:
+      operationId: authorize
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: response_type
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: client_id
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: redirect_uri
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: scope
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: nonce
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: response_mode
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: prompt
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code_challenge
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code_challenge_method
+          schema:
+            type: string
+      responses:
+        "302":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: OAuth2/OIDC authorization endpoint
+      tags:
+        - OIDC
+    post:
+      operationId: authorize-login
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: response_type
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: client_id
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: redirect_uri
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: scope
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: nonce
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: response_mode
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: prompt
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code_challenge
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code_challenge_method
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                claims:
+                  type: string
+                username:
+                  type: string
+              type: object
+        required: true
+      responses:
+        "302":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Interactive login submission
+      tags:
+        - OIDC
   /{issuer}/jwks:
     get:
       operationId: jwks
@@ -314,7 +517,13 @@ paths:
                   type: string
                 client_secret:
                   type: string
+                code:
+                  type: string
+                code_verifier:
+                  type: string
                 grant_type:
+                  type: string
+                redirect_uri:
                   type: string
                 scope:
                   type: string

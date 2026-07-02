@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"reflect"
 	"strconv"
@@ -32,16 +33,34 @@ type TokenPort interface {
 	Issue(ctx context.Context, origin oidc.RequestOrigin, req oidc.TokenRequest) (oidc.TokenResponse, error)
 }
 
+// AuthorizePort is the interactive-authorization use case the driving adapter
+// consumes: decide between the login page and issuing a code (Authorize), and
+// finish a submitted login (SubmitLogin). It is satisfied by
+// *oidc.AuthorizeService.
+type AuthorizePort interface {
+	Authorize(ctx context.Context, req oidc.AuthorizeRequest) (oidc.AuthorizeResult, error)
+	SubmitLogin(
+		ctx context.Context,
+		req oidc.AuthorizeRequest,
+		login oidc.LoginSubmission,
+	) (oidc.AuthorizeResult, error)
+}
+
 // Deps are the core services the protocol handlers orchestrate. The composition
 // root builds them from the real signing/memory adapters and passes them here.
+// Logger is optional; when nil the handlers discard the edge warnings (malformed
+// login claims).
 type Deps struct {
-	Provider ProviderPort
-	Tokens   TokenPort
+	Provider  ProviderPort
+	Tokens    TokenPort
+	Authorize AuthorizePort
+	Logger    *slog.Logger
 }
 
 // handlers binds the dependencies for the operation handler methods.
 type handlers struct {
-	deps Deps
+	deps   Deps
+	logger *slog.Logger
 }
 
 // Register mounts the Slice 1 protocol operations onto api. It installs the
@@ -52,10 +71,17 @@ type handlers struct {
 func Register(api huma.API, deps Deps) {
 	api.UseMiddleware(requestOriginMiddleware) // edge: derive RequestOrigin
 
-	h := &handlers{deps: deps}
+	logger := deps.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	h := &handlers{deps: deps, logger: logger}
 	h.registerDiscovery(api)
 	h.registerJWKS(api)
 	h.registerToken(api)
+	h.registerAuthorize(api)
+	h.registerLogin(api)
+	h.registerFavicon(api)
 
 	stampSecuritySchemes(api)
 }

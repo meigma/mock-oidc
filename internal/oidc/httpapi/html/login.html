@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — mock-oidc</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         background: #0f172a; color: #e2e8f0; padding: 1.5rem; }
+  main { width: 100%; max-width: 26rem; background: #1e293b; border: 1px solid #334155;
+         border-radius: 12px; padding: 1.75rem 1.75rem 2rem; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  h1 { margin: 0 0 .25rem; font-size: 1.4rem; }
+  .notice { margin: 0 0 1.25rem; font-size: .8rem; line-height: 1.4; color: #fbbf24; }
+  label { display: block; margin-bottom: 1rem; font-size: .85rem; font-weight: 600; }
+  input[type=text], textarea { width: 100%; margin-top: .35rem; padding: .6rem .7rem; font-size: .95rem;
+         font-weight: 400; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #e2e8f0; }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  button { width: 100%; margin-top: .5rem; padding: .7rem; font-size: 1rem; font-weight: 600;
+           color: #0f172a; background: #38bdf8; border: 0; border-radius: 8px; cursor: pointer; }
+  button:hover { background: #7dd3fc; }
+</style>
+</head>
+<body>
+<main>
+  <h1>mock-oidc sign-in</h1>
+  <p class="notice">FOR TESTING ONLY — this server mints signed tokens for whatever identity you enter.</p>
+  <form method="post" action="{{.Action}}">
+    <label>Username
+      <input type="text" name="username" autocomplete="username" autofocus required>
+    </label>
+    <label>Additional claims (optional JSON)
+      <textarea name="claims" rows="6" placeholder='{"email": "user@example.com", "groups": ["admin"]}'></textarea>
+    </label>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>
