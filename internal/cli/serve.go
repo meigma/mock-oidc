@@ -31,7 +31,12 @@ func runServe(cmd *cobra.Command, options Options) error {
 
 	logger := observability.NewLogger(options.Err, observability.ParseLevel(cfg.LogLevel), cfg.LogFormat)
 
-	application, err := app.New(cmd.Context(), cfg, logger, options.Build.Version)
+	seed, err := config.LoadSeed(options.Viper)
+	if err != nil {
+		return fmt.Errorf("load OIDC seed: %w", err)
+	}
+
+	application, err := app.New(cmd.Context(), cfg, logger, options.Build.Version, app.WithSeed(seed))
 	if err != nil {
 		return fmt.Errorf("build application: %w", err)
 	}
