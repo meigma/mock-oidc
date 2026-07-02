@@ -232,3 +232,22 @@ Open threads:
   precedence case needs a configured issuer callback, but seed callback parsing
   is an S5 deliverable — cover case (a) live on the container, case (b) at R2
   with an in-process configured callback, and document the S5 deferral.
+
+## 2026-07-02 13:26 — Slice 4 implemented; PR #12 open
+- Workflow wf_7f8d9ab6-2f4 completed (8 agents, ~1M subagent tokens, ~70min).
+  All 7 DoD items PASS on the container (token-exchange dance w/ client auth,
+  jwt-bearer exact-text negatives, ROPC id+access PyJWT-verified, private_key_jwt
+  garbage-signature proof, R3 no-skip).
+- Review: 4 findings, all REAL minors (2 were duplicates): jwt-bearer audience
+  ignored request context (CallbackInput{} baseline never re-resolved); delegation
+  jti bypassed the injectable s.newID (WithTokenID silently unhonored); missing
+  domain-level ClientAuthNone rejection test. Fixed in ff02152.
+- Decisions made during impl (documented in PR/commits): ParseUnverified lives on
+  Signer (not TokenVerifier — verification contract stays pure); client-auth
+  enforcement keyed on ClientAuthNone ("none") vs zero-value Auth; DoD-vs-catalog
+  tension on exchange client auth resolved in favor of the catalog (auth required).
+- GPG: repair commit was signed, rest were not; cache warm → rebase re-sign,
+  8/8 G. PR #12 (squash): https://github.com/meigma/mock-oidc/pull/12
+- Next: merge PR #12 → tick Slice 4 boxes → Slice 5 (multi-issuer, scenarios,
+  /_mock control plane — the biggest remaining slice; includes seed callback
+  parsing that unlocks the deferred R3 audience-precedence + at+jwt live proofs).
