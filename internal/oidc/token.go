@@ -1,5 +1,14 @@
 package oidc
 
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
+)
+
 // TokenType is the response `token_type` (closed: Bearer).
 type TokenType string
 
@@ -64,3 +73,160 @@ func NewToken(issuer IssuerID, alg SigningAlgorithm, typ JOSEType, claims ClaimS
 // opaque to the domain — produced by the Signer adapter, echoed in responses,
 // and handed back to the Verifier adapter for /userinfo and /introspect.
 type SignedToken string
+
+// TokenService orchestrates the token endpoint. It resolves the per-request
+// issuer through the shared issuerResolver, dispatches on the closed GrantType,
+// and mints the response over the Signer port. It holds no transport or crypto
+// type: the Signer performs all JWS, the Clock supplies every time value, and
+// the result is a typed TokenResponse the adapter maps to JSON.
+type TokenService struct {
+	issuers issuerResolver
+	signer  Signer
+	clock   Clock
+	newID   func() string
+	logger  *slog.Logger
+}
+
+// TokenOption customizes a TokenService at construction.
+type TokenOption func(*TokenService)
+
+// WithTokenLogger sets the service logger. The default discards all records.
+func WithTokenLogger(logger *slog.Logger) TokenOption {
+	return func(s *TokenService) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
+}
+
+// WithTokenID overrides the jti (JWT ID) source. The default is a random UUID;
+// tests pin it for deterministic claim assertions.
+func WithTokenID(newID func() string) TokenOption {
+	return func(s *TokenService) {
+		if newID != nil {
+			s.newID = newID
+		}
+	}
+}
+
+// NewTokenService wires the token use cases over the registry, key-store, and
+// signer ports plus the Clock. The jti source defaults to a random UUID and the
+// logger to a discard handler.
+func NewTokenService(
+	registry IssuerRegistry,
+	keys KeyStore,
+	signer Signer,
+	clock Clock,
+	opts ...TokenOption,
+) *TokenService {
+	s := &TokenService{
+		issuers: issuerResolver{registry: registry, keys: keys},
+		signer:  signer,
+		clock:   clock,
+		newID:   uuid.NewString,
+		logger:  slog.New(slog.DiscardHandler),
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// Issue resolves the issuer (so iss/base-URL are proxy-correct) and dispatches
+// on the grant. Only client_credentials is wired in this slice; every other
+// (valid) grant is reported as an unsupported grant until its slice lands.
+func (s *TokenService) Issue(
+	ctx context.Context,
+	origin RequestOrigin,
+	req TokenRequest,
+) (TokenResponse, error) {
+	issuer, err := s.issuers.resolve(ctx, req.Issuer, origin)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	s.logger.DebugContext(ctx, "issuing token", "issuer", string(req.Issuer), "grant", string(req.Grant))
+	switch req.Grant {
+	case GrantClientCredentials:
+		return s.clientCredentials(ctx, issuer, req)
+	case GrantAuthorizationCode, GrantPassword, GrantRefreshToken, GrantJWTBearer, GrantTokenExchange:
+		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
+	default:
+		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
+	}
+}
+
+// clientCredentials mints an access token only: sub defaults to client_id and
+// aud follows the callback's 4-step precedence (→ ["default"] when nothing is
+// configured). iss/iat/nbf/exp/jti/tid come from defaultClaims off the one Clock;
+// expires_in is derived from that same Clock so it never diverges from exp.
+func (s *TokenService) clientCredentials(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	in := req.CallbackInput()
+	cb, err := s.resolveCallback(ctx, issuer, in)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	now := s.clock.Now()
+	claims := s.defaultClaims(issuer, cb.Subject(in), cb.Audience(in), cb, now)
+	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+	return TokenResponse{
+		TokenType:   TokenTypeBearer,
+		AccessToken: access,
+		ExpiresIn:   expiresIn(now, cb.Expiry()),
+		Scope:       req.Scopes,
+	}, nil
+}
+
+// resolveCallback applies the callback precedence: the first configured callback
+// that Matches, else the built-in DefaultTokenCallback. The enqueued one-shot
+// Scenario branch (highest priority) lands with the CallbackQueue port in a
+// later slice; the signature already carries ctx and returns an error so that
+// widening does not touch callers.
+//
+//nolint:unparam // ctx and the error are reserved for the S5 CallbackQueue branch; the signature is kept stable.
+func (s *TokenService) resolveCallback(_ context.Context, issuer Issuer, in CallbackInput) (TokenCallback, error) {
+	for _, cb := range issuer.Callbacks {
+		if cb.Matches(in) {
+			return cb, nil
+		}
+	}
+	return NewDefaultTokenCallback(issuer.ID), nil
+}
+
+// defaultClaims assembles the registered claims into a typed ClaimSet: iss from
+// the resolved BaseURL, iat/nbf from now, exp from now + the callback expiry,
+// jti from the injected ID source, and tid seeded to the issuer id (an
+// overridable claim). It never touches a map[string]any.
+func (s *TokenService) defaultClaims(
+	issuer Issuer,
+	sub Subject,
+	aud Audience,
+	cb TokenCallback,
+	now Instant,
+) ClaimSet {
+	tenant := string(issuer.ID)
+	return ClaimSet{
+		Subject:   sub,
+		Audience:  aud,
+		Issuer:    issuer.BaseURL.IssuerURL(issuer.ID),
+		IssuedAt:  now,
+		NotBefore: now,
+		Expiry:    now.Add(cb.Expiry()),
+		JWTID:     s.newID(),
+		Tenant:    &tenant,
+	}
+}
+
+// expiresIn reports the token lifetime in whole seconds as exp - now, both taken
+// from the same Clock instant so the advertised expires_in can never diverge
+// from the exp claim (a deliberate correction of upstream's expires_in-from-real-
+// now quirk).
+func expiresIn(now Instant, lifetime time.Duration) int64 {
+	return now.Add(lifetime).Unix() - now.Unix()
+}
