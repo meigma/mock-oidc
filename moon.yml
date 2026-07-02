@@ -100,10 +100,17 @@ tasks:
 
   # Regenerate the committed testify mocks from the outbound ports. Run after
   # changing a mocked interface, then commit the result. The OIDC hexagon has no
-  # ports yet (empty `.mockery.yaml` `packages:`), so this currently generates
-  # nothing; later slices repoint it at `internal/oidc` ports.
+  # ports yet (`.mockery.yaml` `packages:` is empty `{}`), so this is a no-op in
+  # the skeleton — mockery v3 fatals on an empty config, so the task short-circuits
+  # until Slice 1 repoints it at `internal/oidc` ports.
   mockery:
-    command: 'mockery'
+    script: |
+      set -eu
+      if grep -qE '^packages:[[:space:]]*\{\}[[:space:]]*$' .mockery.yaml; then
+        echo "mockery: no packages configured yet (skeleton); nothing to generate"
+        exit 0
+      fi
+      mockery
     inputs:
       - '@group(mockerySources)'
     options:
@@ -112,18 +119,22 @@ tasks:
   # Drift-guard: regenerate the mocks into a throwaway directory and fail if they
   # differ from the committed package, so the generated code can never fall out of
   # sync with the interfaces. With an empty `packages:` there are no committed
-  # mocks to diff, so this passes trivially until Slice 1 adds OIDC ports.
+  # mocks to diff and mockery v3 fatals, so the task short-circuits green until
+  # Slice 1 adds OIDC ports.
   mockery-check:
     script: |
       set -eu
+      if grep -qE '^packages:[[:space:]]*\{\}[[:space:]]*$' .mockery.yaml; then
+        echo "mockery-check: no packages configured yet (skeleton); nothing to diff"
+        exit 0
+      fi
       tmp="$(mktemp -d "${PWD}/.mockery-check.XXXXXX")"
       cfg="${tmp}.yaml"
       trap 'rm -rf "$tmp" "$cfg"' EXIT
       sed "s|dir: \"{{.InterfaceDir}}/mocks\"|dir: ${tmp#"${PWD}/"}|" .mockery.yaml > "$cfg"
       mockery --config "$cfg"
       # Compare every committed mocks package against the freshly generated files
-      # of the same name. No `internal/oidc/mocks` exists yet, so the loop is a
-      # no-op in the skeleton.
+      # of the same name.
       for dir in internal/oidc/mocks; do
         [ -d "$dir" ] || continue
         for committed in "$dir"/*.go; do
@@ -138,14 +149,13 @@ tasks:
 
   # Run the container-backed integration suite (gated by the `integration` build
   # tag, so the default `test`/`check` stay hermetic). Requires a running Docker
-  # daemon; testcontainers starts a throwaway Postgres per run. It runs in CI
+  # daemon; testcontainers boots the mock-oidc:dev image per run. It runs in CI
   # (`runInCI: true`) on the Docker-capable `ubuntu-latest` runner, but stays out
   # of the hermetic `check` aggregate so a local `check` needs no Docker.
   test-integration:
     command: 'go test -tags integration ./internal/integration/...'
     inputs:
       - '@group(goSources)'
-      - 'internal/adapter/postgres/migrations/*.sql'
     options:
       cache: false
       runInCI: true

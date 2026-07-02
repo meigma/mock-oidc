@@ -231,6 +231,49 @@ linters:
           deny:
             - pkg: log$
               desc: Use log/slog instead, see https://go.dev/blog/slog
+        # Hexagon dependency rule for the OIDC domain core (TDD §5c, Decision
+        # D-1). Scopes to internal/oidc root files only; subpackage adapters are
+        # excluded via the path-prefix negation. Blanket `crypto` is intentionally
+        # NOT denied — the keyless PKCE S256 transform (crypto/sha256,
+        # crypto/subtle, encoding/base64) is pure domain computation and stays in
+        # the core; only key-bearing signing packages are denied.
+        "oidc-core":
+          files:
+            - "**/internal/oidc/*.go" # root files only; subpackage adapters excluded
+            - "!**/internal/oidc/*/**"
+          deny:
+            - pkg: github.com/danielgtaylor/huma
+              desc: domain core is transport-free; map at the httpapi/controlapi edge
+            - pkg: github.com/go-chi/chi
+              desc: domain core is transport-free
+            - pkg: net/http
+              desc: HTTP is an adapter concern; use the inbound DTOs/commands instead
+            - pkg: net/url
+              desc: parse url.Values at the adapter edge into typed commands (§7)
+            - pkg: crypto/rsa
+              desc: RSA signing lives in internal/oidc/signing behind Signer/KeyStore
+            - pkg: crypto/ecdsa
+              desc: EC signing lives in internal/oidc/signing behind Signer/KeyStore
+            - pkg: crypto/ed25519
+              desc: rejected algorithm family; never produced by the core
+            - pkg: crypto/tls
+              desc: transport crypto is an adapter concern
+            - pkg: crypto/x509
+              desc: certificate handling is a signing-adapter detail
+            - pkg: github.com/go-jose/go-jose
+              desc: JOSE is a signing-adapter detail
+            - pkg: github.com/spf13/viper
+              desc: config parsing is an edge concern
+            - pkg: github.com/spf13/cobra
+              desc: the CLI is an edge concern
+            - pkg: go.opentelemetry.io/otel
+              desc: observability is wired at the edges, not the core
+            - pkg: github.com/prometheus/client_golang
+              desc: metrics are wired at the edges, not the core
+            - pkg: github.com/jackc/pgx
+              desc: persistence is an adapter concern behind a port
+            - pkg: github.com/meigma/mock-oidc/internal/adapter
+              desc: the core never imports transport adapters
 
     embeddedstructfieldcheck:
       # Checks that sync.Mutex and sync.RWMutex are not used as embedded fields.
@@ -305,6 +348,15 @@ linters:
       # Presence of `default` case in switch statements satisfies exhaustiveness, if all members are not listed.
       # Default: true
       default-signifies-exhaustive: false
+
+    goconst:
+      # Ignore test files: repeated string literals in tests (command names,
+      # fixture values) are idiomatic and should not force production constants.
+      # This matches the per-path `_test.go` goconst exclusion below — without it
+      # goconst still counts test occurrences toward the threshold and anchors the
+      # report on the production declaration.
+      # Default: false
+      ignore-tests: true
 
     gocognit:
       # Minimal code complexity to report.

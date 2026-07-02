@@ -1,13 +1,15 @@
 # mockery configuration for generating testify mocks of the outbound ports.
 #
 # Mocks are generated with the testify template (stretchr/testify/mock under the
-# hood) and committed beside their domain in a `mocks` subpackage — e.g. the
-# todo.Repository port mocks to internal/todo/mocks (package mocks, type
-# mocks.Repository, constructor mocks.NewRepository(t)). The mockery-check moon
-# task guards the committed output against drift.
+# hood) and committed beside their domain in a `mocks` subpackage — e.g. a
+# future oidc.Signer port would mock to internal/oidc/mocks (package mocks, type
+# mocks.Signer, constructor mocks.NewSigner(t)). The mockery-check moon task
+# guards the committed output against drift.
 #
 # Add a port by listing its package and interface below, then run
-# `moon run mockery` and commit the result.
+# `moon run mockery` and commit the result. The OIDC hexagon has no outbound
+# ports yet in the skeleton slice, so `packages:` is intentionally empty;
+# Slice 1 repoints it at the internal/oidc ports.
 all: false
 template: testify
 dir: "{{.InterfaceDir}}/mocks"
@@ -15,14 +17,4 @@ filename: "mock_{{.InterfaceName}}.go"
 pkgname: "mocks"
 structname: "{{.InterfaceName}}"
 force-file-write: true
-packages:
-  github.com/meigma/template-go-api/internal/todo:
-    interfaces:
-      Repository:
-  github.com/meigma/template-go-api/internal/authz:
-    interfaces:
-      Authenticator:
-      EntityResolver:
-  github.com/meigma/template-go-api/internal/authz/apikey:
-    interfaces:
-      APIKeyStore:
+packages: {}
