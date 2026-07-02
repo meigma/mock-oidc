@@ -3,8 +3,11 @@ package signing_test
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"math/big"
@@ -20,8 +23,10 @@ import (
 )
 
 // TestSupportedAlgorithmsMatchDomainConstant is the constant-sync guard: the
-// signing adapter must produce exactly the algorithm set discovery advertises
-// (oidc.SupportedSigningAlgorithms). Drift in either list fails the build.
+// signing adapter's advertised set must equal the domain constant discovery is
+// built from (oidc.SupportedSigningAlgorithms). Drift in either list fails the
+// build. Real producibility is asserted separately by
+// TestSupportedAlgorithmsAreProducible.
 func TestSupportedAlgorithmsMatchDomainConstant(t *testing.T) {
 	t.Parallel()
 
@@ -33,6 +38,149 @@ func TestSupportedAlgorithmsMatchDomainConstant(t *testing.T) {
 	require.NoError(t, err)
 	doc := oidc.NewDiscoveryDocument(base, "default", oidc.SupportedSigningAlgorithms())
 	assert.Equal(t, signing.SupportedAlgorithms(), doc.IDTokenSigningAlgValuesSupported)
+}
+
+// TestSupportedAlgorithmsAreProducible is the substantive constant-sync guard: it
+// signs a probe token with EVERY advertised algorithm and verifies the emitted
+// JWS against the public key the adapter publishes. This asserts real signing
+// capability rather than comparing two static lists, so any algorithm advertised
+// in discovery but lacking a working signer code path fails the build.
+func TestSupportedAlgorithmsAreProducible(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	id := oidc.IssuerID("default")
+	now := oidc.NewInstant(time.Unix(1_700_000_000, 0))
+
+	for _, alg := range signing.SupportedAlgorithms() {
+		t.Run(string(alg), func(t *testing.T) {
+			t.Parallel()
+
+			p, err := signing.NewProvider(alg, nil)
+			require.NoError(t, err)
+
+			claims := oidc.ClaimSet{
+				Subject:   "app",
+				Audience:  oidc.Audience{"default"},
+				Issuer:    "http://localhost:8080/default",
+				IssuedAt:  now,
+				NotBefore: now,
+				Expiry:    now.Add(time.Hour),
+				JWTID:     "jti-1",
+			}
+			tok := oidc.NewToken(id, alg, oidc.DefaultJOSEType, claims)
+
+			signed, err := p.Sign(ctx, id, tok)
+			require.NoError(t, err)
+
+			sk, err := p.SigningKey(ctx, id)
+			require.NoError(t, err)
+			assert.Equal(t, alg, sk.Algorithm)
+
+			verifyJWS(t, alg, sk.Public, string(signed))
+		})
+	}
+}
+
+// verifyJWS verifies the compact JWS against jwk using the algorithm's public
+// primitive, proving the adapter really can produce alg.
+func verifyJWS(t *testing.T, alg oidc.SigningAlgorithm, jwk oidc.JWK, compact string) {
+	t.Helper()
+
+	parts := strings.Split(compact, ".")
+	require.Len(t, parts, 3, "compact JWS has three segments")
+	input := []byte(parts[0] + "." + parts[1])
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	require.NoError(t, err)
+
+	switch alg {
+	case oidc.RS256:
+		verifyPKCS1(t, jwk, crypto.SHA256, input, sig)
+	case oidc.RS384:
+		verifyPKCS1(t, jwk, crypto.SHA384, input, sig)
+	case oidc.RS512:
+		verifyPKCS1(t, jwk, crypto.SHA512, input, sig)
+	case oidc.PS256:
+		verifyPSS(t, jwk, crypto.SHA256, input, sig)
+	case oidc.PS384:
+		verifyPSS(t, jwk, crypto.SHA384, input, sig)
+	case oidc.PS512:
+		verifyPSS(t, jwk, crypto.SHA512, input, sig)
+	case oidc.ES256:
+		verifyECDSA(t, jwk, crypto.SHA256, input, sig)
+	case oidc.ES384:
+		verifyECDSA(t, jwk, crypto.SHA384, input, sig)
+	default:
+		t.Fatalf("unexpected algorithm %q", alg)
+	}
+}
+
+func verifyPKCS1(t *testing.T, jwk oidc.JWK, h crypto.Hash, input, sig []byte) {
+	t.Helper()
+	assert.Equal(t, oidc.KeyTypeRSA, jwk.KeyType)
+	require.NoError(t, rsa.VerifyPKCS1v15(rsaPublic(t, jwk), h, digest(h, input), sig))
+}
+
+func verifyPSS(t *testing.T, jwk oidc.JWK, h crypto.Hash, input, sig []byte) {
+	t.Helper()
+	assert.Equal(t, oidc.KeyTypeRSA, jwk.KeyType)
+	require.NoError(t, rsa.VerifyPSS(rsaPublic(t, jwk), h, digest(h, input), sig, &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthEqualsHash,
+		Hash:       h,
+	}))
+}
+
+func verifyECDSA(t *testing.T, jwk oidc.JWK, h crypto.Hash, input, sig []byte) {
+	t.Helper()
+	assert.Equal(t, oidc.KeyTypeEC, jwk.KeyType)
+	pub := ecPublic(t, jwk)
+	size := (pub.Curve.Params().BitSize + 7) / 8
+	require.Len(t, sig, 2*size, "EC signature is fixed-width R || S")
+	r := new(big.Int).SetBytes(sig[:size])
+	s := new(big.Int).SetBytes(sig[size:])
+	require.True(t, ecdsa.Verify(pub, digest(h, input), r, s))
+}
+
+//nolint:exhaustive // only the three JWS digest sizes are exercised here.
+func digest(h crypto.Hash, input []byte) []byte {
+	switch h {
+	case crypto.SHA256:
+		sum := sha256.Sum256(input)
+		return sum[:]
+	case crypto.SHA384:
+		sum := sha512.Sum384(input)
+		return sum[:]
+	case crypto.SHA512:
+		sum := sha512.Sum512(input)
+		return sum[:]
+	default:
+		panic("unsupported hash")
+	}
+}
+
+func ecPublic(t *testing.T, jwk oidc.JWK) *ecdsa.PublicKey {
+	t.Helper()
+	params, ok := jwk.Params.(oidc.ECPublicParams)
+	require.True(t, ok, "expected EC public params")
+	var curve elliptic.Curve
+	switch params.Crv {
+	case "P-256":
+		curve = elliptic.P256()
+	case "P-384":
+		curve = elliptic.P384()
+	default:
+		t.Fatalf("unexpected curve %q", params.Crv)
+	}
+	xBytes, err := base64.RawURLEncoding.DecodeString(params.X)
+	require.NoError(t, err)
+	yBytes, err := base64.RawURLEncoding.DecodeString(params.Y)
+	require.NoError(t, err)
+	// Reconstruct the verification key from the published JWK coordinates.
+	return &ecdsa.PublicKey{
+		Curve: curve,
+		X:     new(big.Int).SetBytes(xBytes),
+		Y:     new(big.Int).SetBytes(yBytes),
+	}
 }
 
 // TestProviderSignsVerifiableRS256 proves the compact JWS the adapter emits
