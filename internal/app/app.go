@@ -117,6 +117,16 @@ func New(
 		return nil, fmt.Errorf("init signing: %w", err)
 	}
 
+	// The control plane requires a steerable clock (freeze/advance, and reset
+	// unfreezes it). When a caller injects a clock that is not a ClockController,
+	// buildWiring leaves controlDeps.Clock nil; disable the control plane entirely
+	// rather than register clock/reset handlers that would nil-panic on use.
+	if cfg.ControlEnabled && w.controlDeps.Clock == nil {
+		logger.WarnContext(ctx,
+			"control plane disabled: the injected clock does not implement ClockController (not steerable)")
+		cfg.ControlEnabled = false
+	}
+
 	// The control plane is co-located on the API listener when enabled with no
 	// dedicated ControlAddr; a non-empty ControlAddr moves it to its own listener.
 	coLocated := cfg.ControlEnabled && cfg.ControlAddr == ""
@@ -173,9 +183,15 @@ func New(
 
 	// Mux-level request recording wraps the whole handler; it path-guards to the
 	// protocol families, so /_mock and the infra routes are never recorded — the
-	// control plane can never observe itself. When co-located, the control gate +
+	// control plane can never observe itself. It is installed ONLY when the control
+	// plane is enabled: recording exists solely to serve the control plane's
+	// takeRequest/requests inspection, so with control off it would buffer bodies
+	// into a log nothing can read or drain. When co-located, the control gate +
 	// testing-only header wrap outermost, scoped to /_mock.
-	handler := httpapi.RecordRequests(w.recorder)(router)
+	handler := router
+	if cfg.ControlEnabled {
+		handler = httpapi.RecordRequests(w.recorder)(handler)
+	}
 	if coLocated {
 		handler = controlScope(cfg.ControlToken)(handler)
 	}
@@ -301,9 +317,10 @@ func buildWiring(o options, logger *slog.Logger) (wiring, error) {
 		Logger:    logger,
 	})
 
-	// The mutable memory.Clock satisfies controlapi.ClockController; a test-injected
-	// clock that does not is simply not steerable (nil controller, control disabled
-	// in that path).
+	// The mutable memory.Clock satisfies controlapi.ClockController. A test-injected
+	// clock that does not leaves ctrlClock (and thus controlDeps.Clock) nil; New
+	// detects that and disables the control plane rather than expose clock/reset
+	// handlers that would nil-panic.
 	ctrlClock, _ := clock.(controlapi.ClockController)
 
 	return wiring{
