@@ -132,11 +132,12 @@ func issuerMatches(iss string, id oidc.IssuerID) bool {
 	return iss[idx+1:] == string(id)
 }
 
-// checkTimes enforces the temporal claims against the injected now: a token whose
-// exp is at/after now-passed... i.e. now after exp is expired, and now before nbf
-// is not-yet-valid. nbf equals iat at issuance, so this also covers iat.
+// checkTimes enforces the temporal claims against the injected now: a token is
+// expired once now is at or after exp (RFC 7519 §4.1.4 — a JWT MUST NOT be
+// accepted on or after its expiration time), and not-yet-valid while now is
+// before nbf. nbf equals iat at issuance, so this also covers iat.
 func checkTimes(claims oidc.ClaimSet, now oidc.Instant) error {
-	if exp := claims.Expiry.Time(); !exp.IsZero() && now.Time().After(exp) {
+	if exp := claims.Expiry.Time(); !exp.IsZero() && !now.Time().Before(exp) {
 		return verifyErr("token is expired")
 	}
 	if nbf := claims.NotBefore.Time(); !nbf.IsZero() && now.Time().Before(nbf) {
