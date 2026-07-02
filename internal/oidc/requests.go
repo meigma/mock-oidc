@@ -20,6 +20,24 @@ type TokenRequest struct {
 
 	// refresh_token grant parameter, attached via WithRefreshToken.
 	RefreshToken RefreshToken // the refresh token being redeemed
+
+	// password (ROPC) grant parameter, attached via WithPassword. The password
+	// value itself is NEVER carried inward — it is captured at the edge and
+	// discarded, never validated (catalog line 96).
+	Username Subject
+
+	// jwt-bearer grant parameter, attached via WithAssertion: the inbound
+	// on-behalf-of assertion, PARSED (never signature-verified) by the delegation
+	// path.
+	Assertion SignedToken
+
+	// token-exchange grant parameters, attached via WithSubjectToken. SubjectToken
+	// is PARSED (never verified); SubjectTokenType is accepted but not enforced;
+	// Audience carries the request `audience` param for the aud-when-none-configured
+	// precedence rule (catalog line 98).
+	SubjectToken     SignedToken
+	SubjectTokenType string
+	Audience         Audience
 }
 
 // NewTokenRequest builds a TokenRequest for the given issuer, grant, and client.
@@ -51,18 +69,62 @@ func (r TokenRequest) WithRefreshToken(tok RefreshToken) TokenRequest {
 	return r
 }
 
+// WithPassword returns a copy of the request carrying the password (ROPC) grant
+// parameters: the username (which becomes the subject) and the requested scopes.
+// The password value is intentionally absent — it is captured and discarded at
+// the edge, never validated (catalog line 96), so it never crosses inward.
+func (r TokenRequest) WithPassword(username string, scopes Scopes) TokenRequest {
+	r.Username = Subject(username)
+	r.Scopes = scopes
+	return r
+}
+
+// WithAssertion returns a copy of the request carrying the jwt-bearer assertion
+// and requested scopes. A blank assertion is the one hard error at this edge —
+// invalid_request "missing required parameter assertion" (catalog line 97) — so
+// the missing-assertion case surfaces as a typed *ProtocolError, not a later
+// nil-parse. The assertion is PARSED, never signature-verified, downstream.
+func (r TokenRequest) WithAssertion(assertion string, scopes Scopes) (TokenRequest, error) {
+	if assertion == "" {
+		return TokenRequest{}, MissingParameter("assertion")
+	}
+	r.Assertion = SignedToken(assertion)
+	r.Scopes = scopes
+	return r, nil
+}
+
+// WithSubjectToken returns a copy of the request carrying the token-exchange
+// parameters. A blank subject_token is invalid_request "missing required
+// parameter subject_token". subjectTokenType is accepted but NOT enforced; a
+// non-empty audience becomes the single-valued request audience candidate for the
+// aud-when-none-configured precedence rule (catalog line 98). The subject token is
+// PARSED, never signature-verified, downstream.
+func (r TokenRequest) WithSubjectToken(subjectToken, subjectTokenType, audience string) (TokenRequest, error) {
+	if subjectToken == "" {
+		return TokenRequest{}, MissingParameter("subject_token")
+	}
+	r.SubjectToken = SignedToken(subjectToken)
+	r.SubjectTokenType = subjectTokenType
+	if audience != "" {
+		r.Audience = Audience{audience}
+	}
+	return r, nil
+}
+
 // CallbackInput projects the request into the transport-free view a
 // TokenCallback matches and templates against. Grant-specific paths populate
-// Subject/Params/Audience; the client_credentials path leaves them zero so the
-// default callback derives sub from the client and aud from the 4-step chain.
+// Subject/Audience: password carries the username as the subject; token-exchange
+// carries the request `audience` param as the audience candidate. The
+// client_credentials path leaves them zero so the default callback derives sub
+// from the client and aud from the 4-step chain.
 func (r TokenRequest) CallbackInput() CallbackInput {
 	return CallbackInput{
 		Grant:    r.Grant,
 		Client:   r.Client,
 		Scopes:   r.Scopes,
-		Subject:  "",
+		Subject:  r.Username,
 		Params:   nil,
-		Audience: nil,
+		Audience: r.Audience,
 	}
 }
 

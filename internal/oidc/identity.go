@@ -33,6 +33,12 @@ const (
 type Client struct {
 	ID   ClientID
 	Auth ClientAuth
+
+	// Assertion carries the raw private_key_jwt client_assertion (RFC 7523) when
+	// Auth is ClientAuthPrivateKeyJWT. It is PARSED (never signature-verified) and
+	// structurally validated on the token-exchange path; it is empty for every
+	// other authentication method.
+	Assertion SignedToken
 }
 
 // RequireClientID returns the effective client id or invalid_client when none

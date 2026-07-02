@@ -192,8 +192,12 @@ func (s *TokenService) Issue(
 			return TokenResponse{}, UnsupportedGrant(string(req.Grant))
 		}
 		return s.refreshToken(ctx, issuer, req)
-	case GrantPassword, GrantJWTBearer, GrantTokenExchange:
-		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
+	case GrantPassword:
+		return s.password(ctx, issuer, req)
+	case GrantJWTBearer:
+		return s.jwtBearer(ctx, issuer, req)
+	case GrantTokenExchange:
+		return s.exchange(ctx, issuer, req)
 	default:
 		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
 	}
@@ -225,6 +229,171 @@ func (s *TokenService) clientCredentials(
 		ExpiresIn:   expiresIn(now, cb.Expiry()),
 		Scope:       req.Scopes,
 	}, nil
+}
+
+// password mints the ROPC (resource-owner password credentials) pair minus the
+// refresh token: an id_token AND an access_token, both with sub = username. The
+// PASSWORD IS NEVER VALIDATED — it is captured and discarded at the edge and never
+// crosses inward, so any password is accepted (catalog line 96). The id_token
+// audience is always [client_id], carries no nonce (nonce=null) and no azp; the
+// access_token audience follows the callback's 4-step chain. Scope is echoed; no
+// refresh token is issued.
+func (s *TokenService) password(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	in := req.CallbackInput()
+	cb, err := s.resolveCallback(ctx, issuer, in)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	now := s.clock.Now()
+	sub := cb.Subject(in) // DefaultTokenCallback: the username for a non-cc grant
+	alg := issuer.Key.Algorithm
+	typ := cb.TypeHeader(in)
+
+	// id_token: aud is ALWAYS [client_id]; no nonce, no azp (only authcode adds azp).
+	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now)
+	idToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign id token: %w", err)
+	}
+
+	// access_token: aud from the callback's 4-step chain.
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now)
+	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+
+	return TokenResponse{
+		TokenType:   TokenTypeBearer,
+		IDToken:     idToken,
+		AccessToken: accessToken,
+		ExpiresIn:   expiresIn(now, cb.Expiry()),
+		Scope:       req.Scopes,
+	}, nil
+}
+
+// jwtBearer mints an On-Behalf-Of access token (RFC 7523) from the inbound
+// assertion. The assertion is PARSED, NOT signature-verified (catalog line 97):
+// its claims are copied verbatim then re-stamped via CopyWithOverrides. Only an
+// access_token is issued (no id/refresh token, no issued_token_type). Scope
+// resolves request scope ?? the assertion's own scope claim ?? invalid_request
+// when neither is present.
+func (s *TokenService) jwtBearer(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	in := req.CallbackInput()
+	cb, err := s.resolveCallback(ctx, issuer, in)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	inbound, err := s.signer.ParseUnverified(ctx, req.Assertion)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	scopes := req.Scopes
+	if len(scopes) == 0 {
+		scopes = inbound.Scope // the assertion's own scope claim
+	}
+	if len(scopes) == 0 {
+		return TokenResponse{}, MalformedRequest("scope missing: neither the request nor the assertion carried a scope")
+	}
+
+	now := s.clock.Now()
+	claims := inbound.CopyWithOverrides(issuer, cb, now, s.newID)
+	claims.Audience = cb.Audience(in) // request-aware aud, mirroring exchange (catalog line 97)
+	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+	return TokenResponse{
+		TokenType:   TokenTypeBearer,
+		AccessToken: access,
+		ExpiresIn:   expiresIn(now, cb.Expiry()),
+		Scope:       scopes,
+	}, nil
+}
+
+// exchange mints an RFC 8693 token-exchange access token from the inbound
+// subject_token. The subject_token is PARSED, NOT signature-verified (catalog line
+// 98): its claims are copied verbatim then re-stamped via CopyWithOverrides. Only
+// an access_token is issued, carrying issued_token_type = the access-token URN and
+// NO scope (token-exchange never echoes scope). Audience precedence: the request
+// `audience` param wins only when the resolved callback has no configured
+// audience; a configured callback audience stands — cb.Audience resolves exactly
+// this when handed the request audience candidate.
+func (s *TokenService) exchange(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	if err := s.authenticateExchangeClient(ctx, issuer, req); err != nil {
+		return TokenResponse{}, err
+	}
+	in := req.CallbackInput()
+	cb, err := s.resolveCallback(ctx, issuer, in)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	inbound, err := s.signer.ParseUnverified(ctx, req.SubjectToken)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	now := s.clock.Now()
+	claims := inbound.CopyWithOverrides(issuer, cb, now, s.newID)
+	claims.Audience = cb.Audience(in) // audience precedence (catalog line 98)
+	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+	return TokenResponse{
+		TokenType:       TokenTypeBearer,
+		AccessToken:     access,
+		IssuedTokenType: req.Grant.IssuedTokenType(),
+		ExpiresIn:       expiresIn(now, cb.Expiry()),
+	}, nil
+}
+
+// authenticateExchangeClient enforces RFC 8693's requirement that a
+// token-exchange request carry SOME form of client authentication (catalog line
+// 109). A request that presents none at all -> invalid_request. When the client
+// authenticated with private_key_jwt the assertion is PARSED (never signature-
+// verified) through the same Signer seam the subject_token uses, then run through
+// the structural-only ClientAuth.ValidatePrivateKeyJWT rules with the issuer URL
+// and the token-endpoint URL as the accepted audiences. client_secret_basic and
+// client_secret_post carry no structural rules (no secret is ever validated). The
+// httpapi edge always reports genuinely-absent auth as ClientAuthNone, so the
+// no-auth branch is what the edge no-client-auth case surfaces as.
+func (s *TokenService) authenticateExchangeClient(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) error {
+	switch req.Client.Auth {
+	case ClientAuthNone:
+		return MissingClientAuthentication()
+	case ClientAuthPrivateKeyJWT:
+		assertion, err := s.signer.ParseUnverified(ctx, req.Client.Assertion)
+		if err != nil {
+			return err
+		}
+		clientID := req.Client.ID
+		if clientID == "" {
+			clientID = ClientID(assertion.Subject) // private_key_jwt client_id == the assertion sub
+		}
+		issuerURL := issuer.BaseURL.IssuerURL(issuer.ID)
+		tokenEndpointURL := issuerURL + suffixToken
+		return req.Client.Auth.ValidatePrivateKeyJWT(assertion, clientID, issuerURL, tokenEndpointURL, s.clock.Now())
+	case ClientAuthClientSecretBasic, ClientAuthClientSecretPost:
+		return nil
+	default:
+		return nil // unspecified (in-process construction) — no HTTP client-auth shape to enforce
+	}
 }
 
 // authorizationCode redeems a single-use code for the id/access/refresh triple.

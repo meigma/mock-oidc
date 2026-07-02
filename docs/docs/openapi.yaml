@@ -702,6 +702,14 @@ paths:
           application/x-www-form-urlencoded:
             schema:
               properties:
+                assertion:
+                  type: string
+                audience:
+                  type: string
+                client_assertion:
+                  type: string
+                client_assertion_type:
+                  type: string
                 client_id:
                   type: string
                 client_secret:
@@ -712,9 +720,19 @@ paths:
                   type: string
                 grant_type:
                   type: string
+                password:
+                  type: string
                 redirect_uri:
                   type: string
+                refresh_token:
+                  type: string
                 scope:
+                  type: string
+                subject_token:
+                  type: string
+                subject_token_type:
+                  type: string
+                username:
                   type: string
               type: object
         required: true
