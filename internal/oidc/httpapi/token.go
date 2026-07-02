@@ -61,17 +61,26 @@ func (h *handlers) token(ctx context.Context, in *TokenInput) (*ProtocolJSON, er
 }
 
 // tokenFormSchema documents the url-encoded token request fields for the OpenAPI
-// document. It covers the client_credentials fields wired this slice plus the
-// grant-agnostic client-auth fields; later grants extend it.
+// document. It covers every wired grant's fields plus the grant-agnostic and
+// private_key_jwt client-auth fields.
 func tokenFormSchema() map[string]*huma.Schema {
 	str := &huma.Schema{Type: huma.TypeString}
 	return map[string]*huma.Schema{
-		"grant_type":    str,
-		"scope":         str,
-		"client_id":     str,
-		"client_secret": str,
-		"code":          str,
-		"code_verifier": str,
-		"redirect_uri":  str,
+		"grant_type":            str,
+		"scope":                 str,
+		"client_id":             str,
+		"client_secret":         str,
+		"code":                  str,
+		"code_verifier":         str,
+		"redirect_uri":          str,
+		"refresh_token":         str,
+		"username":              str,
+		"password":              str,
+		"assertion":             str,
+		"subject_token":         str,
+		"subject_token_type":    str,
+		"audience":              str,
+		"client_assertion":      str,
+		"client_assertion_type": str,
 	}
 }

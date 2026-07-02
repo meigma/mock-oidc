@@ -188,8 +188,24 @@ func decodeTokenRequest(iss oidc.IssuerID, f FlatForm, authz string) (oidc.Token
 	if grant == oidc.GrantRefreshToken {
 		return base.WithRefreshToken(oidc.RefreshToken(f.Get("refresh_token"))), nil
 	}
+	if grant == oidc.GrantPassword {
+		return base.WithPassword(f.Get("username"), oidc.ParseScopes(f.Get("scope"))), nil
+	}
+	if grant == oidc.GrantJWTBearer {
+		return base.WithAssertion(f.Get("assertion"), oidc.ParseScopes(f.Get("scope")))
+	}
+	if grant == oidc.GrantTokenExchange {
+		return base.WithSubjectToken(
+			f.Get("subject_token"), f.Get("subject_token_type"), f.Get("audience"))
+	}
 	return base, nil
 }
+
+// clientAssertionTypeJWTBearer is the RFC 7523 client_assertion_type value that
+// marks a private_key_jwt client authentication on the token endpoint.
+//
+//nolint:gosec // G101: an OAuth2 client-assertion-type URN, not a credential.
+const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
 // decodeClientAuth reads the request's client identity off the Authorization
 // header (client_secret_basic) or the form body (client_secret_post / none). No
@@ -200,12 +216,22 @@ func decodeClientAuth(authz string, f FlatForm) oidc.Client {
 	if id, ok := basicAuthClientID(authz); ok {
 		return oidc.Client{ID: oidc.ClientID(id), Auth: oidc.ClientAuthClientSecretBasic}
 	}
-	id := f.Get("client_id")
+	id := oidc.ClientID(f.Get("client_id"))
+	// private_key_jwt: carry the raw client_assertion inward so the token-exchange
+	// path can parse (unverified) and structurally validate it. The assertion's
+	// own iss/sub carry the effective client_id, so a public client_id is optional.
+	if f.Get("client_assertion_type") == clientAssertionTypeJWTBearer {
+		return oidc.Client{
+			ID:        id,
+			Auth:      oidc.ClientAuthPrivateKeyJWT,
+			Assertion: oidc.SignedToken(f.Get("client_assertion")),
+		}
+	}
 	auth := oidc.ClientAuthNone
 	if f.Has("client_secret") {
 		auth = oidc.ClientAuthClientSecretPost
 	}
-	return oidc.Client{ID: oidc.ClientID(id), Auth: auth}
+	return oidc.Client{ID: id, Auth: auth}
 }
 
 // basicAuthClientID extracts the userid (client_id) from an HTTP Basic
