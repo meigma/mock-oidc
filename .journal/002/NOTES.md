@@ -264,3 +264,32 @@ Open threads:
   escaping). Plan DoD names ghcr image — corrected to mock-oidc:dev (publish
   is S6). This slice unlocks the two deferred live proofs (callback-audience
   precedence, at+jwt via scenario JOSEType override) — DoD includes both.
+
+## 2026-07-02 16:03 — Slice 5 implemented; PR #13 open
+- Workflow wf_3fba55f0-4c8 completed (10 agents, ~1.7M subagent tokens, ~2.2h —
+  biggest slice). All 11 DoD items PASS on container incl. both deferred proofs
+  now live (config-callback audience precedence; scenario typ=at+jwt).
+- Control-security review caught 3 REAL majors, all fixed in-workflow:
+  (1) SSRF + slice panic in debugger callback (token URL from unauthenticated
+  cookie) -> recompute from validated issuer + origin; (2) request recording
+  installed unconditionally even when control disabled + unbounded issuer
+  cardinality -> gate on ControlEnabled + LRU-capped buckets; (3) nil
+  ClockController deref -> disable control + warn instead of panic.
+- Post-DoD the DoD agent surfaced 2 honest container-deployment caveats (not DoD
+  blockers but real). Fixed via a follow-up opus agent with regression tests:
+  * Debugger back-channel dialed the front-channel origin -> connection-refused
+    under ANY port remap (docker -p, testcontainers). Now dials own loopback
+    listener via injected SelfAddr seam, preserving browser Host for iss.
+    TestContainerDebuggerPortRemap drives the round trip through a random mapped
+    port to lock it.
+  * Bare POST /_mock/mint 422'd (Huma cannot see Go r.Host via header binding).
+    Added a Huma resolver backfilling Host; precedence issuerUrl > X-Forwarded-Host
+    > Host.
+- 20 signed commits; PR #13 (squash): https://github.com/meigma/mock-oidc/pull/13
+- LESSON (carry forward): in-process httptest R2 cannot catch container port-remap
+  bugs (self-reachable origin) — deployment-shaped defects only show at R3/DoD.
+  Back-channel/self-calling features need a remapped-port integration test.
+- Next: merge PR #13 -> tick Slice 5 boxes -> Slice 6 (realistic ops +
+  distribution: CORS allowlist tightening, TLS, proxy-aware URL hardening,
+  packaging/provenance melange/apko/cosign/SLSA, docs) — the FINAL slice. Also
+  pending: 2 open dependabot PRs (otelhttp 0.69.0, x/time 0.15.0) to babysit.
