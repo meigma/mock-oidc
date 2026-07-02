@@ -459,6 +459,207 @@ paths:
       summary: Interactive login submission
       tags:
         - OIDC
+  /{issuer}/debugger:
+    get:
+      operationId: debugger
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: client_id
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: scope
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: subject
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Interactive OIDC debugger (pre-filled authorize form)
+      tags:
+        - OIDC
+    post:
+      operationId: debugger-submit
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                client_id:
+                  type: string
+                scope:
+                  type: string
+                subject:
+                  type: string
+              type: object
+        required: true
+      responses:
+        "302":
+          description: Found
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: start the authorization-code flow"
+      tags:
+        - OIDC
+  /{issuer}/debugger/callback:
+    get:
+      operationId: debugger-callback-get
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error_description
+          schema:
+            type: string
+        - in: header
+          name: Cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: authorization-code callback (back-channel exchange)"
+      tags:
+        - OIDC
+    post:
+      operationId: debugger-callback-post
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error_description
+          schema:
+            type: string
+        - in: header
+          name: Cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: authorization-code callback (back-channel exchange)"
+      tags:
+        - OIDC
   /{issuer}/endsession:
     get:
       operationId: endsession-get

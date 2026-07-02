@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OIDC debugger result — mock-oidc</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center;
+         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         background: #0f172a; color: #e2e8f0; padding: 1.5rem; }
+  main { width: 100%; max-width: 52rem; background: #1e293b; border: 1px solid #334155;
+         border-radius: 12px; padding: 1.75rem; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  h1 { margin: 0 0 1rem; font-size: 1.4rem; }
+  h2 { margin: 1.5rem 0 .5rem; font-size: 1rem; color: #7dd3fc; }
+  .err { border: 1px solid #7f1d1d; border-radius: 8px; padding: 1rem; background: #2a1414; }
+  .err h1 { color: #f87171; }
+  .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem;
+          color: #cbd5e1; margin: 0; }
+  pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem;
+        white-space: pre-wrap; word-break: break-all; background: #0f172a; color: #cbd5e1;
+        border: 1px solid #334155; border-radius: 8px; padding: .8rem; margin: 0; }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; }
+  dt { color: #94a3b8; font-size: .85rem; }
+  dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem;
+       word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+{{- if .Error}}
+  <div class="err">
+    <h1>Debugger error</h1>
+    <p class="code">{{.Error}}</p>
+    {{- if .ErrorDescription}}
+    <p>{{.ErrorDescription}}</p>
+    {{- end}}
+  </div>
+{{- else}}
+  <h1>Token exchange complete</h1>
+  <dl>
+    <dt>token_type</dt><dd>{{.TokenType}}</dd>
+    <dt>expires_in</dt><dd>{{.ExpiresIn}}</dd>
+    <dt>scope</dt><dd>{{.Scope}}</dd>
+  </dl>
+  {{- if .AccessToken}}
+  <h2>access_token</h2>
+  <pre>{{.AccessToken}}</pre>
+  {{- end}}
+  {{- if .IDToken}}
+  <h2>id_token</h2>
+  <pre>{{.IDToken}}</pre>
+  {{- end}}
+  {{- if .RefreshToken}}
+  <h2>refresh_token</h2>
+  <pre>{{.RefreshToken}}</pre>
+  {{- end}}
+  <h2>Back-channel request — POST {{.TokenEndpoint}}</h2>
+  <pre>{{.RequestBody}}</pre>
+  <h2>Back-channel response — {{.ResponseStatus}}</h2>
+  <pre>{{.ResponseBody}}</pre>
+{{- end}}
+</main>
+</body>
+</html>

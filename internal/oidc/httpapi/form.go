@@ -6,6 +6,10 @@ import (
 	"github.com/meigma/mock-oidc/internal/oidc"
 )
 
+// clientIDParam is the OAuth2 client_id form/query parameter name, shared across
+// the token, authorize, and debugger edges.
+const clientIDParam = "client_id"
+
 // FlatForm is the last-wins flat view of an x-www-form-urlencoded body (upstream
 // keyValuesToMap('&')): duplicate keys collapse to the LAST value. It drives
 // grant dispatch and client-auth decoding. A distinct named type ensures a

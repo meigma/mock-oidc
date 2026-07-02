@@ -4,13 +4,19 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/http"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/meigma/mock-oidc/internal/oidc"
 )
+
+// debuggerExchangeTimeout bounds the debugger's back-channel /token exchange so a
+// stuck self-call can never pin the request goroutine.
+const debuggerExchangeTimeout = 10 * time.Second
 
 // OpenAPI tags grouping the protocol operations in the document.
 const (
@@ -66,12 +72,19 @@ type Deps struct {
 	Authorize AuthorizePort
 	Session   SessionPort
 	Logger    *slog.Logger
+	// HTTPClient is the client the debugger uses for its real back-channel /token
+	// exchange. Optional; nil installs a bounded default.
+	HTTPClient *http.Client
 }
 
 // handlers binds the dependencies for the operation handler methods.
 type handlers struct {
 	deps   Deps
 	logger *slog.Logger
+	// debuggerClient performs the debugger's real back-channel /token exchange
+	// against this server's own public surface. It is Deps.HTTPClient when set,
+	// else a bounded default.
+	debuggerClient *http.Client
 }
 
 // Register mounts the Slice 1 protocol operations onto api. It installs the
@@ -86,7 +99,11 @@ func Register(api huma.API, deps Deps) {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	h := &handlers{deps: deps, logger: logger}
+	client := deps.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: debuggerExchangeTimeout}
+	}
+	h := &handlers{deps: deps, logger: logger, debuggerClient: client}
 	h.registerDiscovery(api)
 	h.registerJWKS(api)
 	h.registerToken(api)
@@ -96,6 +113,7 @@ func Register(api huma.API, deps Deps) {
 	h.registerIntrospect(api)
 	h.registerRevoke(api)
 	h.registerEndSession(api)
+	h.registerDebugger(api)
 	h.registerFavicon(api)
 
 	stampSecuritySchemes(api)

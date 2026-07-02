@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OIDC debugger — mock-oidc</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         background: #0f172a; color: #e2e8f0; padding: 1.5rem; }
+  main { width: 100%; max-width: 30rem; background: #1e293b; border: 1px solid #334155;
+         border-radius: 12px; padding: 1.75rem 1.75rem 2rem; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  h1 { margin: 0 0 .25rem; font-size: 1.4rem; }
+  .issuer { margin: 0 0 1rem; font-size: .85rem; color: #94a3b8; }
+  .notice { margin: 0 0 1.25rem; font-size: .8rem; line-height: 1.4; color: #fbbf24; }
+  label { display: block; margin-bottom: 1rem; font-size: .85rem; font-weight: 600; }
+  input[type=text] { width: 100%; margin-top: .35rem; padding: .6rem .7rem; font-size: .95rem;
+         font-weight: 400; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #e2e8f0; }
+  button { width: 100%; margin-top: .5rem; padding: .7rem; font-size: 1rem; font-weight: 600;
+           color: #0f172a; background: #38bdf8; border: 0; border-radius: 8px; cursor: pointer; }
+  button:hover { background: #7dd3fc; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OIDC debugger</h1>
+  <p class="issuer">Issuer: <strong>{{.Issuer}}</strong></p>
+  <p class="notice">FOR TESTING ONLY — this starts a real authorization-code flow and exchanges the code for tokens.</p>
+  <form method="post" action="{{.Action}}">
+    <label>Client ID
+      <input type="text" name="client_id" value="{{.ClientID}}" autocomplete="off">
+    </label>
+    <label>Scope
+      <input type="text" name="scope" value="{{.Scope}}" autocomplete="off">
+    </label>
+    <label>Subject (interactive login only)
+      <input type="text" name="subject" value="{{.Subject}}" autocomplete="off">
+    </label>
+    <button type="submit">Start flow</button>
+  </form>
+</main>
+</body>
+</html>

@@ -75,7 +75,7 @@ func tokenFormSchema() map[string]*huma.Schema {
 	return map[string]*huma.Schema{
 		"grant_type":            str,
 		"scope":                 str,
-		"client_id":             str,
+		clientIDParam:           str,
 		"client_secret":         str,
 		"code":                  str,
 		"code_verifier":         str,

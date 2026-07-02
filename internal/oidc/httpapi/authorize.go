@@ -183,7 +183,7 @@ func decodeAuthorizeRequest(issuer oidc.IssuerID, p authorizeParams) oidc.Author
 func authorizeActionURL(issuer string, p authorizeParams) string {
 	q := url.Values{}
 	setNonEmpty(q, "response_type", p.ResponseType)
-	setNonEmpty(q, "client_id", p.ClientID)
+	setNonEmpty(q, clientIDParam, p.ClientID)
 	setNonEmpty(q, "redirect_uri", p.RedirectURI)
 	setNonEmpty(q, "scope", p.Scope)
 	setNonEmpty(q, "state", p.State)
