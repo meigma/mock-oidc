@@ -120,6 +120,35 @@ type TokenVerifier interface {
 	Verify(ctx context.Context, issuer IssuerID, token SignedToken, now Instant) (ClaimSet, error)
 }
 
+// CallbackQueue is the core's READ side over the one-shot, issuer-matched
+// Scenario queue (control-plane C6). Its sole core consumer is
+// TokenService.resolveCallback (shared by every grant, including refresh); the
+// WRITE side (Enqueue/List/Clear) is the consumer-declared controlapi
+// ScenarioStore, satisfied by the SAME memory type. It is hosted here — not in
+// controlapi — so the two non-cooperating adapters share it through a neutral
+// domain port, NOT because the core owns the write side. Consumption is
+// HEAD-only and issuer-matched: the head is taken iff its issuer matches the
+// request's issuer, so a queued scenario for issuer A blocks issuer B even if B
+// arrives first (upstream parity). FIFO, single-use; implementations must be
+// concurrency-safe.
+type CallbackQueue interface {
+	// DequeueFor removes and returns the head scenario iff its issuer == id;
+	// otherwise ok is false and the queue is unchanged.
+	DequeueFor(ctx context.Context, id IssuerID) (Scenario, bool, error)
+}
+
+// RequestRecorder is the core's WRITE side over the per-issuer capture log
+// (control-plane C6). It has no core-service consumer — the httpapi recording
+// middleware writes to it; the drain/read side (List/Take/Clear) is the
+// consumer-declared controlapi RequestLog, satisfied by the same memory type. It
+// is hosted here so the two adapters share it through a neutral domain port. Raw
+// bytes are preserved verbatim (param order matters) and never reparsed;
+// implementations must be concurrency-safe.
+type RequestRecorder interface {
+	// Record stores a captured request; write-only on the core side.
+	Record(ctx context.Context, req CapturedRequest) error
+}
+
 // issuerResolver assembles the per-request Issuer aggregate from the registry
 // (identity + configured callbacks), the key store (public key), and the
 // proxy-aware base URL. It is a domain-internal collaborator — not a port, not a
