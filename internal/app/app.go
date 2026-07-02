@@ -18,6 +18,10 @@ import (
 	adapterhttp "github.com/meigma/mock-oidc/internal/adapter/http"
 	"github.com/meigma/mock-oidc/internal/config"
 	"github.com/meigma/mock-oidc/internal/observability"
+	"github.com/meigma/mock-oidc/internal/oidc"
+	"github.com/meigma/mock-oidc/internal/oidc/httpapi"
+	"github.com/meigma/mock-oidc/internal/oidc/memory"
+	"github.com/meigma/mock-oidc/internal/oidc/signing"
 	"github.com/meigma/mock-oidc/internal/ratelimit"
 )
 
@@ -51,9 +55,34 @@ type App struct {
 // Option configures how New wires the application.
 type Option func(*options)
 
-// options collects the composition-root seams. It is intentionally empty in the
-// skeleton slice; later slices add OIDC seams (clock, signing, seed) here.
-type options struct{}
+// options collects the composition-root seams: the parsed OIDC seed plus the
+// clock and signing injection points that let tests bypass the seed-derived
+// defaults (a frozen clock, a fixed key set).
+type options struct {
+	seed    config.Seed
+	clock   oidc.Clock      // nil → clock derived from the seed (frozen if systemTime set)
+	signing signingProvider // nil → signing.NewProvider(seed)
+}
+
+// signingProvider is the crypto capability set the composition root consumes. It
+// is declared here (consumer side) per the dependency rule; *signing.Provider
+// satisfies it. The TokenVerifier facet joins in Slice 3.
+type signingProvider interface {
+	oidc.Signer
+	oidc.KeyStore
+}
+
+// WithSeed supplies the parsed OIDC seed. serve passes config.LoadSeed's result;
+// tests pass a hand-built Seed. Absent → config.DefaultSeed().
+func WithSeed(s config.Seed) Option { return func(o *options) { o.seed = s } }
+
+// WithClock injects a clock, overriding the seed-derived one. Unit and
+// functional tests pass a frozen or mutable memory.Clock to pin iat/nbf/exp.
+func WithClock(c oidc.Clock) Option { return func(o *options) { o.clock = c } }
+
+// WithSigning injects a signing provider with a fixed key set, bypassing the
+// seed-driven construction (and its key generation) for stable kids in tests.
+func WithSigning(p signingProvider) Option { return func(o *options) { o.signing = p } }
 
 // New wires the application from cfg and logger. version is reported in the
 // OpenAPI document served by the API. The server is DB-less, so New performs no
@@ -66,12 +95,20 @@ func New(
 	version string,
 	opts ...Option,
 ) (*App, error) {
-	var o options
+	o := options{seed: config.DefaultSeed()}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
 	logger.WarnContext(ctx, bootBanner)
+
+	// Build the OIDC hexagon over the in-memory + signing adapters. Signing
+	// construction parses the seed's keys and validates the algorithm, so it is
+	// the one fallible OIDC wiring step.
+	registrar, err := buildRegistrar(o, logger)
+	if err != nil {
+		return nil, fmt.Errorf("init signing: %w", err)
+	}
 
 	metrics := observability.NewMetrics()
 
@@ -101,9 +138,12 @@ func New(
 		TrustedProxyHeader:   cfg.TrustedProxyHeader,
 		// No DB ⇒ no readiness checks ⇒ /readyz is unconditionally ready.
 		Readiness: nil,
-		// The OIDC services do not exist yet; a nil Registrar mounts no operations,
-		// so the server serves only the infrastructure routes.
-		Register:         nil,
+		// Mount the OIDC protocol operations (discovery, JWKS, token) built above.
+		Register: registrar,
+		// Render wrong-method protocol routes (for example GET /{issuer}/token) as
+		// the uniform OAuth2 error shape instead of RFC 9457, without the generic
+		// transport substrate importing internal/oidc.
+		FallbackWriter:   oidcFallbackWriter,
 		Tracing:          cfg.TracingEnabled,
 		InstallRateLimit: installRateLimit,
 	})
@@ -158,17 +198,82 @@ func buildRateLimiter(cfg config.Config, logger *slog.Logger) (*ratelimit.InMemo
 	return limiter, install
 }
 
+// buildRegistrar wires the OIDC hexagon — the mutable clock, the signing
+// adapter, and the in-memory issuer registry — into the provider and token
+// services, and returns the httpapi Registrar that mounts their operations. It
+// is the single OIDC-wiring path shared by New and the server-less OpenAPIYAML.
+func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, error) {
+	clock := resolveClock(o)
+	sign, err := resolveSigning(o)
+	if err != nil {
+		return nil, err
+	}
+
+	registry := memory.NewIssuerRegistry()
+	provider := oidc.NewProviderService(registry, sign, oidc.WithProviderLogger(logger))
+	tokens := oidc.NewTokenService(registry, sign, sign, clock, oidc.WithTokenLogger(logger))
+
+	return httpapi.Registrar(httpapi.Deps{Provider: provider, Tokens: tokens}), nil
+}
+
+// resolveClock returns the injected clock when present; otherwise it derives one
+// from the seed: a clock frozen at systemTime when configured, else a mutable
+// clock reading wall time.
+func resolveClock(o options) oidc.Clock {
+	switch {
+	case o.clock != nil:
+		return o.clock
+	case o.seed.SystemTimeFixed:
+		return memory.NewFrozenClock(o.seed.SystemTime)
+	default:
+		return memory.NewClock()
+	}
+}
+
+// resolveSigning returns the injected signing provider when present; otherwise it
+// constructs the RSA signing adapter from the seed (parsing the initial keys and
+// validating the algorithm — the fallible step).
+func resolveSigning(o options) (signingProvider, error) {
+	if o.signing != nil {
+		return o.signing, nil
+	}
+	sign, err := signing.NewProvider(o.seed.Algorithm, o.seed.InitialKeys)
+	if err != nil {
+		return nil, err
+	}
+	return sign, nil
+}
+
+// oidcFallbackWriter renders the uniform OAuth2 error shape for a wrong-method
+// protocol-family route (for example GET /{issuer}/token → 405), returning false
+// for non-protocol paths so the RFC 9457 problem+json fallback stays in place. It
+// is the composition-root strategy installed into RouterDeps.FallbackWriter.
+func oidcFallbackWriter(w http.ResponseWriter, r *http.Request) bool {
+	if !httpapi.IsProtocolPath(r.URL.Path) {
+		return false
+	}
+	httpapi.WriteOAuth2Error(w, http.StatusMethodNotAllowed,
+		"invalid_request", "the method is not allowed for this resource")
+	return true
+}
+
 // Handler returns the assembled HTTP handler, primarily for functional tests.
 func (a *App) Handler() http.Handler {
 	return a.server.Handler
 }
 
 // OpenAPIYAML builds the API without binding a listener and returns the
-// OpenAPI 3.0.3 specification as YAML. In the skeleton slice no OIDC operations
-// are registered, so the document describes only the base API surface; later
-// slices register the protocol operations through the Registrar.
+// OpenAPI 3.0.3 specification as YAML. It registers the OIDC protocol operations
+// (discovery, JWKS, token) through the same Registrar the server uses, so the
+// committed spec matches the running surface. The operations' shapes are
+// seed-independent, so a default seed is used.
 func OpenAPIYAML(version string) ([]byte, error) {
-	spec, err := adapterhttp.SpecYAML(version, nil, nil)
+	registrar, err := buildRegistrar(options{seed: config.DefaultSeed()}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		return nil, fmt.Errorf("build oidc registrar: %w", err)
+	}
+
+	spec, err := adapterhttp.SpecYAML(version, registrar, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build openapi spec: %w", err)
 	}

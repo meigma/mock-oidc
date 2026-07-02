@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -41,6 +42,29 @@ func TestAppWiringServesInfraRoutes(t *testing.T) {
 		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		assert.Equalf(t, http.StatusOK, rec.Code, "GET %s", path)
 	}
+}
+
+// TestAppServesDefaultDiscovery proves the composition root wires the OIDC
+// hexagon: with zero config the default issuer's discovery document is served,
+// issuer-scoped to the request-derived base URL.
+func TestAppServesDefaultDiscovery(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Load(viper.New())
+	logger := observability.NewLogger(io.Discard, slog.LevelError, "json")
+
+	application, err := app.New(context.Background(), cfg, logger, "test")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/default/.well-known/openid-configuration", nil)
+	application.Handler().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &doc))
+	issuer, _ := doc["issuer"].(string)
+	assert.Contains(t, issuer, "/default", "issuer scoped to the default provider")
 }
 
 // TestAppLogsForTestingBanner proves the for-testing-only positioning banner is
