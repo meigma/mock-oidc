@@ -112,7 +112,9 @@ func New(
 	// Build the OIDC hexagon over the in-memory + signing adapters, plus the shared
 	// recorder/queue/clock the control plane also drives. Signing construction parses
 	// the seed's keys and validates the algorithm, so it is the one fallible step.
-	w, err := buildWiring(o, logger)
+	// cfg.Addr is threaded through so the debugger's back-channel /token exchange can
+	// loopback-dial this server's own listener (port-remap safe).
+	w, err := buildWiring(o, logger, cfg.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("init signing: %w", err)
 	}
@@ -285,7 +287,7 @@ type wiring struct {
 // CodeStore is shared: AuthorizeService writes codes, the TokenService burns them
 // at the authorization_code exchange; the CallbackQueue is shared: the control
 // plane enqueues scenarios, the TokenService dequeues them (issuer-matched head).
-func buildWiring(o options, logger *slog.Logger) (wiring, error) {
+func buildWiring(o options, logger *slog.Logger, selfAddr string) (wiring, error) {
 	clock := resolveClock(o)
 	sign, err := resolveSigning(o)
 	if err != nil {
@@ -315,6 +317,7 @@ func buildWiring(o options, logger *slog.Logger) (wiring, error) {
 		Authorize: authorize,
 		Session:   session,
 		Logger:    logger,
+		SelfAddr:  selfAddr,
 	})
 
 	// The mutable memory.Clock satisfies controlapi.ClockController. A test-injected
@@ -396,7 +399,9 @@ func (a *App) ControlHandler() http.Handler {
 // committed spec matches the running surface. The operations' shapes are
 // seed-independent, so a default seed is used.
 func OpenAPIYAML(version string) ([]byte, error) {
-	w, err := buildWiring(options{seed: config.DefaultSeed()}, slog.New(slog.DiscardHandler))
+	// Server-less spec build binds no listener, so the debugger self-address is empty
+	// (the origin-derived back-channel target; irrelevant to the emitted schema).
+	w, err := buildWiring(options{seed: config.DefaultSeed()}, slog.New(slog.DiscardHandler), "")
 	if err != nil {
 		return nil, fmt.Errorf("build oidc wiring: %w", err)
 	}

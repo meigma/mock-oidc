@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -187,16 +189,21 @@ func (h *handlers) debuggerCallback(
 	if in.Error != "" {
 		return h.debuggerErrorPage(in.Error, in.ErrorDescription), nil
 	}
-	// The back-channel token endpoint is recomputed from the REQUEST origin (as the
+	// The back-channel token endpoint is derived from the REQUEST origin (as the
 	// submit leg does), never from the cookie: the flow cookie is unauthenticated,
 	// so deriving the exchange target from it would be an SSRF vector (an arbitrary
 	// host) and could panic. The cookie's redirect_uri is only echoed to /token.
-	base, err := oidc.ResolveBaseURL(originFrom(ctx))
+	origin := originFrom(ctx)
+	base, err := oidc.ResolveBaseURL(origin)
 	if err != nil {
 		//nolint:nilerr // browser surface renders the failure as HTML, never a Go error.
 		return h.debuggerErrorPage("server_error", "could not resolve the request origin"), nil
 	}
-	tokenURL := base.IssuerURL(issuer) + "/token"
+	// frontTokenURL is the browser-facing /token URL shown on the result page. The
+	// exchange itself may instead dial this server's OWN loopback listener (see
+	// debuggerToken), because behind a remapped/mapped container port the front-channel
+	// origin names a host-side port that is not listening inside the container.
+	frontTokenURL := base.IssuerURL(issuer) + "/token"
 	flow, ok := decodeDebuggerFlow(in.Cookie)
 	if !ok {
 		return h.debuggerErrorPage(
@@ -222,7 +229,7 @@ func (h *handlers) debuggerCallback(
 		"code_verifier": {flow.Verifier},
 	}.Encode()
 
-	status, respBody, err := h.debuggerExchange(ctx, tokenURL, reqBody)
+	status, respBody, err := h.debuggerExchange(ctx, h.debuggerToken(issuer, frontTokenURL, origin), reqBody)
 	if err != nil {
 		//nolint:nilerr // browser surface renders the failure as HTML, never a Go error.
 		return h.debuggerErrorPage(
@@ -233,7 +240,7 @@ func (h *handlers) debuggerCallback(
 
 	data := debuggerResultData{
 		Issuer:         in.Issuer,
-		TokenEndpoint:  tokenURL,
+		TokenEndpoint:  frontTokenURL,
 		RequestBody:    reqBody,
 		ResponseStatus: status,
 		ResponseBody:   respBody,
@@ -242,17 +249,66 @@ func (h *handlers) debuggerCallback(
 	return htmlOutput(http.StatusOK, tmplDebuggerResult, data), nil
 }
 
-// debuggerExchange performs the back-channel token POST and returns the response
-// status line, the raw response body, and any transport error.
+// debuggerExchangeTarget carries the back-channel dial URL plus the front-channel
+// identity the /token endpoint reads to derive the iss. When Host is empty the
+// request is sent verbatim (the in-process fallback); otherwise the loopback dial
+// presents the browser's Host (and any inbound X-Forwarded-*) so the exchanged
+// token's iss matches what the browser saw.
+type debuggerExchangeTarget struct {
+	url      string // the URL actually dialed
+	host     string // req.Host override (front-channel authority); empty = none
+	fwdProto string // X-Forwarded-Proto to forward; empty = none
+	fwdHost  string // X-Forwarded-Host to forward; empty = none
+	fwdPort  string // X-Forwarded-Port to forward; empty = none
+}
+
+// debuggerToken selects the back-channel exchange target. With a bound self-address
+// (the composition root passes cfg.Addr), it dials THIS server's own listener over
+// loopback — port-remap/container safe, since the front-channel origin may name a
+// host-side mapped port that is not listening inside the container — while carrying
+// the front-channel Host and any inbound X-Forwarded-* so the /token endpoint derives
+// the SAME iss the browser saw. The dial URL is never attacker-controllable: only
+// loopback and the validated issuer path are used, so the SSRF property the
+// origin-derived target established is preserved. With no self-address (in-process
+// httptest), it falls back to dialing the front-channel URL as-is.
+func (h *handlers) debuggerToken(
+	issuer oidc.IssuerID,
+	frontTokenURL string,
+	origin oidc.RequestOrigin,
+) debuggerExchangeTarget {
+	port, ok := selfLoopbackPort(h.selfAddr)
+	if !ok {
+		return debuggerExchangeTarget{url: frontTokenURL}
+	}
+	return debuggerExchangeTarget{
+		url:      "http://127.0.0.1:" + port + "/" + url.PathEscape(string(issuer)) + "/token",
+		host:     originAuthority(origin),
+		fwdProto: origin.FwdProto,
+		fwdHost:  origin.FwdHost,
+		fwdPort:  origin.FwdPort,
+	}
+}
+
+// debuggerExchange performs the back-channel token POST against target and returns
+// the response status line, the raw response body, and any transport error. It sets
+// the front-channel Host and X-Forwarded-* overrides (when present) so the /token
+// endpoint derives the browser-facing iss even though the dial is over loopback.
 func (h *handlers) debuggerExchange(
 	ctx context.Context,
-	tokenURL, body string,
+	target debuggerExchangeTarget,
+	body string,
 ) (string, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.url, strings.NewReader(body))
 	if err != nil {
 		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if target.host != "" {
+		req.Host = target.host // the front-channel authority the /token iss derives from
+	}
+	setIfPresent(req, "X-Forwarded-Proto", target.fwdProto)
+	setIfPresent(req, "X-Forwarded-Host", target.fwdHost)
+	setIfPresent(req, "X-Forwarded-Port", target.fwdPort)
 	resp, err := h.debuggerClient.Do(req)
 	if err != nil {
 		return "", "", err
@@ -263,6 +319,38 @@ func (h *handlers) debuggerExchange(
 		return "", "", err
 	}
 	return resp.Status, string(raw), nil
+}
+
+// setIfPresent sets header name to value only when value is non-empty, so the
+// loopback back-channel forwards a proxy header only when the inbound leg carried it.
+func setIfPresent(req *http.Request, name, value string) {
+	if value != "" {
+		req.Header.Set(name, value)
+	}
+}
+
+// selfLoopbackPort extracts the numeric port from the bound listen address (e.g.
+// ":8080" -> "8080"), reporting ok=false when no self-address is configured or it
+// carries no port — the caller then keeps the origin-derived front-channel target.
+func selfLoopbackPort(selfAddr string) (string, bool) {
+	if selfAddr == "" {
+		return "", false
+	}
+	_, port, err := net.SplitHostPort(selfAddr)
+	if err != nil || port == "" {
+		return "", false
+	}
+	return port, true
+}
+
+// originAuthority reconstructs the inbound Host authority (host[:port]) from the
+// resolved origin, so the loopback back-channel presents the same Host the browser
+// sent and the /token endpoint derives the matching iss.
+func originAuthority(o oidc.RequestOrigin) string {
+	if o.Port == 0 {
+		return o.Host
+	}
+	return net.JoinHostPort(o.Host, strconv.Itoa(o.Port))
 }
 
 // debuggerSetCookie renders the flow-state Set-Cookie header value: HttpOnly +

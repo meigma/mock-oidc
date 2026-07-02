@@ -75,6 +75,12 @@ type Deps struct {
 	// HTTPClient is the client the debugger uses for its real back-channel /token
 	// exchange. Optional; nil installs a bounded default.
 	HTTPClient *http.Client
+	// SelfAddr is this server's bound listen address (e.g. ":8080"), supplied by the
+	// composition root from cfg.Addr. When set, the debugger's back-channel /token
+	// exchange dials THIS process's own loopback listener rather than the
+	// browser-facing origin, so it stays reachable behind a remapped/mapped container
+	// port. Empty preserves the origin-derived dial (in-process httptest tests).
+	SelfAddr string
 }
 
 // handlers binds the dependencies for the operation handler methods.
@@ -85,6 +91,9 @@ type handlers struct {
 	// against this server's own public surface. It is Deps.HTTPClient when set,
 	// else a bounded default.
 	debuggerClient *http.Client
+	// selfAddr is the bound listen address (Deps.SelfAddr) the debugger loopback-dials
+	// its own /token on; empty falls back to the origin-derived front-channel target.
+	selfAddr string
 }
 
 // Register mounts the Slice 1 protocol operations onto api. It installs the
@@ -103,7 +112,7 @@ func Register(api huma.API, deps Deps) {
 	if client == nil {
 		client = &http.Client{Timeout: debuggerExchangeTimeout}
 	}
-	h := &handlers{deps: deps, logger: logger, debuggerClient: client}
+	h := &handlers{deps: deps, logger: logger, debuggerClient: client, selfAddr: deps.SelfAddr}
 	h.registerDiscovery(api)
 	h.registerJWKS(api)
 	h.registerToken(api)
