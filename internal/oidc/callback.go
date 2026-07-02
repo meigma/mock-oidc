@@ -74,7 +74,10 @@ type TokenCallback interface {
 // default-claim assembly, not here.
 type DefaultTokenCallback struct {
 	issuer   IssuerID
-	audience Audience // nil == unset (fall through the 4-step chain)
+	subject  Subject      // "" == unset (fall through to the grant's subject rule)
+	audience Audience     // nil == unset (fall through the 4-step chain)
+	typ      JOSEType     // "" == unset (defaults to "JWT")
+	claims   CustomClaims // extra scripted claims folded add-only by the service
 	expiry   time.Duration
 }
 
@@ -84,12 +87,45 @@ func NewDefaultTokenCallback(issuer IssuerID) DefaultTokenCallback {
 	return DefaultTokenCallback{issuer: issuer, audience: nil, expiry: defaultTokenExpiry}
 }
 
+// NewDefaultTokenCallbackWith builds a default callback carrying an explicit
+// subject, audience, JOSE typ, extra claims, and expiry — the shape a control
+// scenario or a config `tokenCallbacks` entry WITHOUT `requestMappings` produces
+// (upstream's DefaultOAuth2TokenCallback parameters). Empty/nil/zero inputs fall
+// back to the bare-default behavior: subject -> the grant's subject rule, audience
+// -> the 4-step chain, typ -> "JWT", expiry -> 3600s. Like the bare default it is
+// still a DefaultTokenCallback, so the token service stamps tid (and, on
+// authorization_code, azp) for it — only a RequestMappingCallback suppresses those.
+func NewDefaultTokenCallbackWith(
+	issuer IssuerID,
+	subject Subject,
+	audience Audience,
+	typ JOSEType,
+	claims CustomClaims,
+	expiry time.Duration,
+) DefaultTokenCallback {
+	if expiry <= 0 {
+		expiry = defaultTokenExpiry
+	}
+	return DefaultTokenCallback{
+		issuer:   issuer,
+		subject:  subject,
+		audience: audience,
+		typ:      typ,
+		claims:   claims.Clone(),
+		expiry:   expiry,
+	}
+}
+
 // IssuerID returns the issuer this callback mints for.
 func (c DefaultTokenCallback) IssuerID() IssuerID { return c.issuer }
 
-// Subject resolves the token subject: client_credentials uses the client_id;
-// otherwise the pre-resolved input subject (ROPC/login username).
+// Subject resolves the token subject: an explicitly configured subject wins;
+// else client_credentials uses the client_id; otherwise the pre-resolved input
+// subject (ROPC/login username).
 func (c DefaultTokenCallback) Subject(in CallbackInput) Subject {
+	if c.subject != "" {
+		return c.subject
+	}
 	if in.Grant == GrantClientCredentials {
 		return in.Client.ID.AsSubject()
 	}
@@ -118,11 +154,19 @@ func (c DefaultTokenCallback) Audience(in CallbackInput) Audience {
 	return Audience{defaultAudienceValue}
 }
 
-// TypeHeader returns the default JWS typ ("JWT").
-func (c DefaultTokenCallback) TypeHeader(_ CallbackInput) JOSEType { return DefaultJOSEType }
+// TypeHeader returns the configured JWS typ, defaulting to "JWT" when unset.
+func (c DefaultTokenCallback) TypeHeader(_ CallbackInput) JOSEType {
+	if c.typ != "" {
+		return c.typ
+	}
+	return DefaultJOSEType
+}
 
-// ExtraClaims returns no custom claims; the default callback adds none.
-func (c DefaultTokenCallback) ExtraClaims(_ CallbackInput) ClaimSet { return ClaimSet{} }
+// ExtraClaims returns the configured scripted claims (empty for the bare
+// default). The token service folds them in add-only, skipping registered names.
+func (c DefaultTokenCallback) ExtraClaims(_ CallbackInput) ClaimSet {
+	return ClaimSet{Custom: c.claims.Clone()}
+}
 
 // Expiry returns the configured token lifetime.
 func (c DefaultTokenCallback) Expiry() time.Duration { return c.expiry }
