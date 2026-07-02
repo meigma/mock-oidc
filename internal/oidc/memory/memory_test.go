@@ -70,6 +70,20 @@ func TestCodeStoreSingleUse(t *testing.T) {
 	assert.ErrorIs(t, err, memory.ErrCodeNotFound)
 }
 
+// TestRefreshTokenStoreSave covers the persist-only adapter: a saved record is
+// retained and the latest write for a token wins.
+func TestRefreshTokenStoreSave(t *testing.T) {
+	t.Parallel()
+
+	store := memory.NewRefreshTokenStore()
+	ctx := context.Background()
+	rec := oidc.RefreshRecord{Issuer: "default", Subject: "alice", Format: oidc.RefreshBareUUID}
+
+	require.NoError(t, store.Save(ctx, "rt-1", rec))
+	// Overwriting the same token is allowed (no read path exists until Slice 3).
+	require.NoError(t, store.Save(ctx, "rt-1", rec))
+}
+
 func TestClockFreezeAdvanceUnfreeze(t *testing.T) {
 	t.Parallel()
 

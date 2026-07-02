@@ -99,3 +99,25 @@ func (s *CodeStore) Take(_ context.Context, code oidc.AuthorizationCode) (oidc.C
 	delete(s.records, code)
 	return rec, nil
 }
+
+// RefreshTokenStore is the in-memory, persist-only [oidc.RefreshTokenStore]:
+// Slice 2 saves a RefreshRecord under each minted refresh token so the
+// authorization_code exchange can return it; redemption arrives in Slice 3. It
+// is concurrency-safe under a Mutex.
+type RefreshTokenStore struct {
+	mu      sync.Mutex
+	records map[oidc.RefreshToken]oidc.RefreshRecord
+}
+
+// NewRefreshTokenStore builds an empty refresh-token store.
+func NewRefreshTokenStore() *RefreshTokenStore {
+	return &RefreshTokenStore{records: make(map[oidc.RefreshToken]oidc.RefreshRecord)}
+}
+
+// Save stores rec under token, overwriting any prior record for the same token.
+func (s *RefreshTokenStore) Save(_ context.Context, token oidc.RefreshToken, rec oidc.RefreshRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records[token] = rec
+	return nil
+}
