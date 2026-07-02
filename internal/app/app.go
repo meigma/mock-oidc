@@ -222,6 +222,7 @@ func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, erro
 		oidc.WithTokenLogger(logger),
 		oidc.WithCodeStore(codes),
 		oidc.WithRefreshStore(refresh),
+		oidc.WithRefreshRotation(o.seed.RotateRefreshToken),
 	)
 	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin)
 	session := oidc.NewSessionService(sign, refresh, clock)

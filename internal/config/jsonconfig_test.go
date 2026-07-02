@@ -97,6 +97,40 @@ func TestDefaultSeedInteractiveLoginFalse(t *testing.T) {
 	assert.False(t, config.DefaultSeed().InteractiveLogin)
 }
 
+// TestLoadSeedRotateRefreshToken verifies the top-level rotateRefreshToken flag
+// parses into the seed, enabling refresh-token rotation on redemption.
+func TestLoadSeedRotateRefreshToken(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"rotateRefreshToken": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.True(t, seed.RotateRefreshToken, "rotateRefreshToken honored from JSON config")
+}
+
+// TestLoadSeedRotateRefreshTokenDefaultsFalse verifies rotateRefreshToken
+// defaults to false (the same refresh token keeps redeeming).
+func TestLoadSeedRotateRefreshTokenDefaultsFalse(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.False(t, seed.RotateRefreshToken, "absent rotateRefreshToken defaults to false")
+}
+
+// TestDefaultSeedRotateRefreshTokenFalse verifies the zero-config seed leaves
+// refresh-token rotation off.
+func TestDefaultSeedRotateRefreshTokenFalse(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, config.DefaultSeed().RotateRefreshToken)
+}
+
 // TestLoadSeedInlineOverridesPath verifies JSON_CONFIG (inline) wins over
 // JSON_CONFIG_PATH.
 func TestLoadSeedInlineOverridesPath(t *testing.T) {

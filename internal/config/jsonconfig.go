@@ -50,6 +50,12 @@ type Seed struct {
 	// zero-config default auto-issues a code so a stock client's authorize→code→
 	// token flow works without a browser, matching upstream.
 	InteractiveLogin bool
+
+	// RotateRefreshToken enables refresh-token rotation: on a successful
+	// refresh_token redemption the old token is replaced by a fresh RefreshBareUUID
+	// token (the nonce is dropped). Absent → false: the same refresh token keeps
+	// redeeming, matching upstream's default.
+	RotateRefreshToken bool
 }
 
 // DefaultSeed is the zero-config seed used when no JSON config is present.
@@ -61,8 +67,9 @@ func DefaultSeed() Seed {
 // are ignored (lenient parity); only the fields mock-oidc honors this slice are
 // declared.
 type document struct {
-	TokenProvider    tokenProviderDoc `json:"tokenProvider"`
-	InteractiveLogin bool             `json:"interactiveLogin"`
+	TokenProvider      tokenProviderDoc `json:"tokenProvider"`
+	InteractiveLogin   bool             `json:"interactiveLogin"`
+	RotateRefreshToken bool             `json:"rotateRefreshToken"`
 }
 
 type tokenProviderDoc struct {
@@ -150,6 +157,7 @@ func (d document) toSeed() (Seed, error) {
 	}
 
 	seed.InteractiveLogin = d.InteractiveLogin
+	seed.RotateRefreshToken = d.RotateRefreshToken
 
 	return seed, nil
 }
