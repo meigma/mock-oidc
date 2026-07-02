@@ -67,13 +67,17 @@ func toJWKDTO(k oidc.JWK) JWKDTO {
 
 // toTokenResponseDTO copies the domain token response onto the wire matrix.
 // ExpiresIn is taken verbatim from the domain value (derived from the same Clock
-// as exp), never recomputed from a live wall clock.
+// as exp), never recomputed from a live wall clock. IDToken and RefreshToken are
+// omitempty on the DTO, so the client_credentials shape (which leaves them
+// zero) still emits only the access-token fields.
 func toTokenResponseDTO(r oidc.TokenResponse) TokenResponseDTO {
 	return TokenResponseDTO{
-		TokenType:   string(r.TokenType),
-		AccessToken: string(r.AccessToken),
-		ExpiresIn:   int(r.ExpiresIn),
-		Scope:       r.Scope.String(),
+		TokenType:    string(r.TokenType),
+		IDToken:      string(r.IDToken),
+		AccessToken:  string(r.AccessToken),
+		RefreshToken: string(r.RefreshToken),
+		ExpiresIn:    int(r.ExpiresIn),
+		Scope:        r.Scope.String(),
 	}
 }
 
@@ -90,10 +94,14 @@ func decodeTokenRequest(iss oidc.IssuerID, f FlatForm, authz string) (oidc.Token
 		return oidc.TokenRequest{}, err
 	}
 	client := decodeClientAuth(authz, f)
-	base := oidc.NewTokenRequest(iss, grant, client)
+	base := oidc.NewTokenRequest(iss, grant, client).WithScopes(oidc.ParseScopes(f.Get("scope")))
 
-	if grant == oidc.GrantClientCredentials {
-		return base.WithScopes(oidc.ParseScopes(f.Get("scope"))), nil
+	if grant == oidc.GrantAuthorizationCode {
+		return base.WithAuthorizationCode(
+			oidc.AuthorizationCode(f.Get("code")),
+			f.Get("code_verifier"),
+			f.Get("redirect_uri"),
+		), nil
 	}
 	return base, nil
 }

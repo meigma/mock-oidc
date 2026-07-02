@@ -70,5 +70,8 @@ func tokenFormSchema() map[string]*huma.Schema {
 		"scope":         str,
 		"client_id":     str,
 		"client_secret": str,
+		"code":          str,
+		"code_verifier": str,
+		"redirect_uri":  str,
 	}
 }
