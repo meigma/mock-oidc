@@ -199,3 +199,26 @@ Open threads:
   4-stage workflow (domain/ports/memory → SessionService+refresh grant+verifier →
   httpapi userinfo/introspect/revoke/endsession → composition+rotate flag+R3),
   protocol reviewer explicitly hunting alg-confusion/none/typ-gate/clock bugs.
+
+## 2026-07-02 11:51 — Slice 3 implemented; PR #11 open
+- Workflow wf_cc930aad-db7 completed (9 agents, ~1.1M subagent tokens, ~70min).
+  All 11 functional DoD items PASS on the container (full lifecycle dance incl.
+  cross-issuer exact-text rejection, idempotent revoke, WWW-Authenticate header).
+- Review: 1 finding, REAL and valuable — RFC 7519 §4.1.4 boundary bug: verifier
+  accepted tokens at the exact exp instant (used now.After(exp)). Fixed to
+  !now.Before(exp) with boundary doc+test (ac5520f after re-sign).
+- Verifier security table all-green: alg=none rejected, alg-confusion both
+  directions rejected (alg derived from resolved key), typ gate JWT|at+jwt (D-4)
+  with foo+jwt rejected, wrong-iss rejected, clock-injection proven, tampered
+  sig rejected; independent golang-jwt cross-verification.
+- Honest nuances (also in PR #11 body): zero-config auth-code tokens carry empty
+  sub (default callback injects login subject; non-interactive has none) —
+  refresh preserves it; live at+jwt container proof needs S5 scenario callbacks
+  (default callback pins typ=JWT), unit/functional tests cover it.
+- TDD-internal contradictions resolved during impl (documented in commits):
+  RefreshTokenStore issuer-carrying signatures (§8.7 over §5); NewInvalidToken(err)
+  + typed UnsupportedTokenType (§7.4 call sites over §11 note).
+- GPG: only the repair tip was unsigned; amended -S; 11/11 G. PR #11 (squash):
+  https://github.com/meigma/mock-oidc/pull/11
+- Next: merge PR #11 → tick Slice 3 boxes → Slice 4 (delegation & legacy grants:
+  token-exchange, jwt-bearer, password, private_key_jwt client assertions).
