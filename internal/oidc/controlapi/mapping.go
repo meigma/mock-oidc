@@ -68,8 +68,11 @@ func toMintSpec(in *MintTokenInput) (oidc.MintSpec, error) {
 
 // resolveMintBaseURL yields the iss base: the explicit issuerUrl override (the
 // anyToken case, host-root parsed) or the proxy-aware resolution of the control
-// request's Host / X-Forwarded-* headers (correct for the co-located Testcontainers
-// case, where the test's Host header IS the externally-visible address).
+// request's Host / X-Forwarded-* (correct for the co-located Testcontainers case,
+// where the request Host IS the externally-visible address). in.Host is the request's
+// own host, backfilled by MintTokenInput.Resolve (Go hides it from header binding),
+// so a bare mint with no override still resolves an iss; precedence stays issuerUrl >
+// X-Forwarded-Host > request Host.
 func resolveMintBaseURL(in *MintTokenInput) (oidc.BaseURL, error) {
 	if in.Body.IssuerURL != "" {
 		return oidc.ParseBaseURL(in.Body.IssuerURL)

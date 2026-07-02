@@ -122,6 +122,72 @@ func TestMintProxyAwareIssuer(t *testing.T) {
 	assert.Equal(t, "https://idp.example.com/default", out.Issuer)
 }
 
+func TestMintBareHostDerivesIssuer(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// No issuerUrl and no X-Forwarded-Host: iss must still resolve from the request's
+	// own Host, which MintTokenInput.Resolve backfills from the request (Go keeps the
+	// Host on r.Host, invisible to Huma's header binding). This is the DX fix: a bare
+	// mint with no explicit host indicator succeeds instead of 422ing.
+	resp := h.api.Post("/_mock/mint",
+		"Host: idp.internal",
+		map[string]any{"issuer": "default", "subject": "bob"},
+	)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	var out struct {
+		Issuer string `json:"issuer"`
+	}
+	decodeBody(t, resp.Body.Bytes(), &out)
+	assert.Equal(t, "http://idp.internal/default", out.Issuer,
+		"a bare mint derives iss from the request Host")
+}
+
+func TestMintForwardedHostBeatsRequestHost(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// Both are present; X-Forwarded-Host must win over the request Host.
+	resp := h.api.Post("/_mock/mint",
+		"Host: internal.local",
+		"X-Forwarded-Host: forwarded.example",
+		map[string]any{"issuer": "default", "subject": "bob"},
+	)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	var out struct {
+		Issuer string `json:"issuer"`
+	}
+	decodeBody(t, resp.Body.Bytes(), &out)
+	assert.Equal(t, "http://forwarded.example/default", out.Issuer,
+		"X-Forwarded-Host takes precedence over the request Host")
+}
+
+func TestMintIssuerURLBeatsHostAndForwarded(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// issuerUrl must win over both the forwarded header and the request Host.
+	resp := h.api.Post("/_mock/mint",
+		"Host: internal.local:8080",
+		"X-Forwarded-Host: forwarded.example",
+		map[string]any{
+			"issuer":    "default",
+			"issuerUrl": "https://explicit.example.com",
+			"subject":   "bob",
+		},
+	)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	var out struct {
+		Issuer string `json:"issuer"`
+	}
+	decodeBody(t, resp.Body.Bytes(), &out)
+	assert.Equal(t, "https://explicit.example.com/default", out.Issuer,
+		"issuerUrl overrides both X-Forwarded-Host and the request Host")
+}
+
 func TestMintReservedIssuerIs404Problem(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

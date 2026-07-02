@@ -1,15 +1,35 @@
 package controlapi
 
-import "time"
+import (
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+)
 
 // MintTokenInput is POST /_mock/mint. The forwarding headers feed proxy-aware iss
-// resolution (parity with the OIDC edge); the body carries the mint spec.
+// resolution (parity with the OIDC edge); the body carries the mint spec. Host is
+// backfilled by Resolve from the request itself (see below).
 type MintTokenInput struct {
+	// Host documents the inbound Host in the OpenAPI surface, but Go's net/http keeps
+	// the inbound Host on r.Host — never in r.Header — so the header binding never
+	// populates it. Resolve backfills the real value from huma.Context.Host().
 	Host     string `header:"Host"`
 	FwdProto string `header:"X-Forwarded-Proto"`
 	FwdHost  string `header:"X-Forwarded-Host"`
 	FwdPort  string `header:"X-Forwarded-Port"`
 	Body     MintRequestDTO
+}
+
+// Resolve backfills the inbound request Host onto the mint input. Because Go's
+// net/http surfaces the Host on r.Host rather than r.Header, the `header:"Host"`
+// binding above cannot see it; huma.Context.Host() can. Filling it here lets a bare
+// mint (no issuerUrl, no X-Forwarded-Host) derive iss from the request's own host, so
+// a caller reaching the server through a remapped/mapped port needs no explicit host
+// indicator. The forwarded headers still bind normally; resolveMintBaseURL ->
+// oidc.ResolveBaseURL keeps the precedence issuerUrl > X-Forwarded-Host > request Host.
+func (in *MintTokenInput) Resolve(ctx huma.Context) []error {
+	in.Host = ctx.Host()
+	return nil
 }
 
 // MintRequestDTO folds upstream's issueToken and anyToken overloads into one body.

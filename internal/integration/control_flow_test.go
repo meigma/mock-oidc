@@ -74,9 +74,9 @@ func TestContainerControlPlane(t *testing.T) {
 	assert.NotContains(t, unverifiedClaims(t, secondDef), "acr", "the scenario is single-use")
 
 	// 4. Direct mint (no flow): the minted token verifies against /default/jwks and
-	//    is accepted at /default/userinfo — mint ≡ grant. issuerUrl pins iss to the
-	//    container base because Go does not surface the Host header to Huma's header
-	//    binding, so proxy-aware iss from Host alone yields an empty host.
+	//    is accepted at /default/userinfo — mint ≡ grant. issuerUrl pins iss to an
+	//    explicit, stable base here so the clock-travel step below can reason about it;
+	//    the bare-Host derivation (no override) is proven separately just after.
 	status, body = postControlJSON(ctx, t, base+"/_mock/mint", map[string]any{
 		"issuer":    "default",
 		"issuerUrl": base,
@@ -100,6 +100,27 @@ func TestContainerControlPlane(t *testing.T) {
 
 	uiStatus, uiBody := getBearer(ctx, t, base+"/default/userinfo", mint.Token)
 	require.Equalf(t, http.StatusOK, uiStatus, "userinfo (live minted token): %s", uiBody)
+
+	// 4b. Bare mint (host-indicator DX fix): with NO issuerUrl and NO X-Forwarded-Host,
+	//     iss is derived from the request's own Host — the container's mapped address —
+	//     so a caller needs no explicit host indicator. The resolved iss must equal the
+	//     base the request reached, and the token must be accepted at /userinfo.
+	status, body = postControlJSON(ctx, t, base+"/_mock/mint", map[string]any{
+		"issuer":  "default",
+		"subject": "carol",
+	})
+	require.Equalf(t, http.StatusOK, status, "bare mint (no host override): %s", body)
+	var bareMint struct {
+		Token  string `json:"token"`
+		Issuer string `json:"issuer"`
+	}
+	require.NoError(t, json.Unmarshal(body, &bareMint))
+	require.NotEmpty(t, bareMint.Token)
+	assert.Equal(t, base+"/default", bareMint.Issuer,
+		"a bare mint derives iss from the request Host (the mapped container address)")
+
+	bareUIStatus, bareUIBody := getBearer(ctx, t, base+"/default/userinfo", bareMint.Token)
+	require.Equalf(t, http.StatusOK, bareUIStatus, "userinfo (bare-minted token): %s", bareUIBody)
 
 	// 5. Capture → take: after driving a known /default/token POST, the destructive
 	//    take returns its exact raw bytes (order preserved); /_mock is never logged.
