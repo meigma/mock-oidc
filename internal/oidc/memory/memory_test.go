@@ -2,6 +2,8 @@ package memory_test
 
 import (
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -157,4 +159,36 @@ func TestClockFreezeAdvanceUnfreeze(t *testing.T) {
 	before := wall.Now().Time()
 	wall.Advance(time.Hour)
 	assert.False(t, wall.Now().Time().Before(before.Add(time.Hour)))
+}
+
+// TestIssuerRegistryMaterializeConcurrent hammers Materialize from many
+// goroutines — both racing on a single issuer (idempotency under contention) and
+// materializing distinct issuers in parallel — and confirms the registry stays
+// consistent. Run under `go test -race`, it guards the computeIfAbsent
+// double-checked locking against data races and lost updates.
+func TestIssuerRegistryMaterializeConcurrent(t *testing.T) {
+	t.Parallel()
+
+	reg := memory.NewIssuerRegistry()
+	ctx := context.Background()
+
+	const (
+		issuers = 16
+		workers = 8
+	)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for i := range issuers {
+				id := oidc.IssuerID("issuer-" + strconv.Itoa(i))
+				rec, _ := reg.Materialize(ctx, id)
+				assert.Equal(t, id, rec.ID)
+			}
+		})
+	}
+	wg.Wait()
+
+	known, err := reg.Known(ctx)
+	require.NoError(t, err)
+	assert.Len(t, known, issuers, "each distinct issuer is materialized exactly once")
 }
