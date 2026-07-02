@@ -331,6 +331,9 @@ func (s *TokenService) exchange(
 	issuer Issuer,
 	req TokenRequest,
 ) (TokenResponse, error) {
+	if err := s.authenticateExchangeClient(ctx, issuer, req); err != nil {
+		return TokenResponse{}, err
+	}
 	in := req.CallbackInput()
 	cb, err := s.resolveCallback(ctx, issuer, in)
 	if err != nil {
@@ -353,6 +356,43 @@ func (s *TokenService) exchange(
 		IssuedTokenType: req.Grant.IssuedTokenType(),
 		ExpiresIn:       expiresIn(now, cb.Expiry()),
 	}, nil
+}
+
+// authenticateExchangeClient enforces RFC 8693's requirement that a
+// token-exchange request carry SOME form of client authentication (catalog line
+// 109). A request that presents none at all -> invalid_request. When the client
+// authenticated with private_key_jwt the assertion is PARSED (never signature-
+// verified) through the same Signer seam the subject_token uses, then run through
+// the structural-only ClientAuth.ValidatePrivateKeyJWT rules with the issuer URL
+// and the token-endpoint URL as the accepted audiences. client_secret_basic and
+// client_secret_post carry no structural rules (no secret is ever validated). The
+// httpapi edge always reports genuinely-absent auth as ClientAuthNone, so the
+// no-auth branch is what the edge no-client-auth case surfaces as.
+func (s *TokenService) authenticateExchangeClient(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) error {
+	switch req.Client.Auth {
+	case ClientAuthNone:
+		return MissingClientAuthentication()
+	case ClientAuthPrivateKeyJWT:
+		assertion, err := s.signer.ParseUnverified(ctx, req.Client.Assertion)
+		if err != nil {
+			return err
+		}
+		clientID := req.Client.ID
+		if clientID == "" {
+			clientID = ClientID(assertion.Subject) // private_key_jwt client_id == the assertion sub
+		}
+		issuerURL := issuer.BaseURL.IssuerURL(issuer.ID)
+		tokenEndpointURL := issuerURL + suffixToken
+		return req.Client.Auth.ValidatePrivateKeyJWT(assertion, clientID, issuerURL, tokenEndpointURL, s.clock.Now())
+	case ClientAuthClientSecretBasic, ClientAuthClientSecretPost:
+		return nil
+	default:
+		return nil // unspecified (in-process construction) — no HTTP client-auth shape to enforce
+	}
 }
 
 // authorizationCode redeems a single-use code for the id/access/refresh triple.

@@ -103,6 +103,14 @@ func MalformedRequest(desc string) *ProtocolError {
 	}
 }
 
+// MissingClientAuthentication reports a token-exchange request that carried no
+// client authentication at all as invalid_request (400) with upstream's exact
+// text. Token-exchange is the only grant that requires some form of client
+// authentication (catalog line 109); a public client_id alone does not satisfy it.
+func MissingClientAuthentication() *ProtocolError {
+	return MalformedRequest("request must contain some form of ClientAuthentication.")
+}
+
 // InvalidGrant is the base for every invalid_grant case (400); the specific
 // throwers below delegate to it so their text lives in exactly one place.
 func InvalidGrant(desc string) *ProtocolError {
