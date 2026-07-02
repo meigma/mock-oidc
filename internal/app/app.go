@@ -1,31 +1,24 @@
-// Package app is the composition root: it wires the domain service, the
-// PostgreSQL persistence adapter, the authorization engine and API-key
-// authenticator, observability, and the HTTP server into a runnable App.
+// Package app is the composition root: it wires configuration, observability,
+// and the kept chi+Huma transport into a runnable App. In this walking-skeleton
+// slice it serves only the infrastructure routes; the OIDC hexagon
+// (internal/oidc) and its adapters are mounted through the Registrar seam in
+// later slices.
 package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
 	adapterhttp "github.com/meigma/mock-oidc/internal/adapter/http"
-	"github.com/meigma/mock-oidc/internal/adapter/postgres"
-	"github.com/meigma/mock-oidc/internal/authz"
-	"github.com/meigma/mock-oidc/internal/authz/apikey"
 	"github.com/meigma/mock-oidc/internal/config"
 	"github.com/meigma/mock-oidc/internal/observability"
 	"github.com/meigma/mock-oidc/internal/ratelimit"
-	"github.com/meigma/mock-oidc/internal/todo"
-	todoauthz "github.com/meigma/mock-oidc/internal/todo/authz"
-	"github.com/meigma/mock-oidc/internal/todo/httpapi"
-	todopostgres "github.com/meigma/mock-oidc/internal/todo/postgres"
 )
 
 // rateLimiterIdleTTL is how long an idle per-client bucket is kept before the
@@ -34,7 +27,12 @@ const rateLimiterIdleTTL = 10 * time.Minute
 
 // serviceName is the OpenTelemetry service.name reported by traces. It is a
 // default; OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES override it.
-const serviceName = "template-go-api"
+const serviceName = "mock-oidc"
+
+// bootBanner is logged once at startup. mock-oidc mints real, signed tokens for
+// any identity on request, so this line makes its for-testing-only positioning
+// unmistakable in container logs (C10).
+const bootBanner = "mock-oidc is FOR TESTING ONLY: it issues signed tokens for arbitrary identities and must never front production traffic"
 
 // App is a fully wired API server ready to Run.
 type App struct {
@@ -42,9 +40,6 @@ type App struct {
 	metricsServer *http.Server
 	logger        *slog.Logger
 	grace         time.Duration
-	// pool is the PostgreSQL connection pool, closed during graceful shutdown.
-	// It is nil when a repository is injected with WithRepository (tests).
-	pool *pgxpool.Pool
 	// rateLimiter is the in-process rate limiter whose janitor goroutine is
 	// stopped during graceful shutdown. It is nil when rate limiting is disabled.
 	rateLimiter *ratelimit.InMemory
@@ -56,36 +51,14 @@ type App struct {
 // Option configures how New wires the application.
 type Option func(*options)
 
-type options struct {
-	repo          todo.Repository
-	authenticator authz.Authenticator
-}
-
-// WithRepository injects a ready-made todo.Repository instead of connecting the
-// PostgreSQL adapter. It lets tests wire the full server without a database, and
-// gives integrators a seam to plug in an alternative adapter without editing the
-// composition root.
-func WithRepository(repo todo.Repository) Option {
-	return func(o *options) {
-		o.repo = repo
-	}
-}
-
-// WithAuthenticator injects an authz.Authenticator instead of wiring the shipped
-// PostgreSQL-backed API-key authenticator. It mirrors WithRepository: tests use
-// it to authenticate a request without a database (so authz can run with
-// AuthzEnabled true and no api_keys table), and integrators use it to plug in a
-// real verifier (JWT/OIDC/session) without editing the composition root.
-func WithAuthenticator(authenticator authz.Authenticator) Option {
-	return func(o *options) {
-		o.authenticator = authenticator
-	}
-}
+// options collects the composition-root seams. It is intentionally empty in the
+// skeleton slice; later slices add OIDC seams (clock, signing, seed) here.
+type options struct{}
 
 // New wires the application from cfg and logger. version is reported in the
-// OpenAPI document served by the API. Unless a repository is injected with
-// WithRepository, it connects a PostgreSQL connection pool, which can fail. The
-// caller owns running and shutting the App down, which closes the pool.
+// OpenAPI document served by the API. The server is DB-less, so New performs no
+// I/O that can fail beyond initializing tracing. The caller owns running and
+// shutting the App down.
 func New(
 	ctx context.Context,
 	cfg config.Config,
@@ -98,23 +71,14 @@ func New(
 		opt(&o)
 	}
 
-	repo, pool, readiness, err := resolveStore(ctx, cfg, o.repo)
-	if err != nil {
-		return nil, err
-	}
+	logger.WarnContext(ctx, bootBanner)
 
-	service := todo.NewService(repo, logger)
 	metrics := observability.NewMetrics()
-
-	installAuthz, finalizeAuthz, err := authzInstaller(cfg, repo, pool, logger, o.authenticator)
-	if err != nil {
-		return nil, err
-	}
 
 	rateLimiter, installRateLimit := buildRateLimiter(cfg, logger)
 
 	// Configure tracing before serving so the global provider is in place when
-	// requests (and their pgx queries) start producing spans.
+	// requests start producing spans.
 	traceShutdown, err := observability.NewTracerProvider(ctx, observability.TracingConfig{
 		Enabled:        cfg.TracingEnabled,
 		ServiceName:    serviceName,
@@ -135,14 +99,13 @@ func New(
 		RequestTimeout:       cfg.RequestTimeout,
 		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
 		TrustedProxyHeader:   cfg.TrustedProxyHeader,
-		// The postgres store contributes a real connectivity check here; an
-		// injected repository (tests) contributes none, so /readyz is always ready.
-		Readiness:        readiness,
-		Register:         registerResources(service),
+		// No DB ⇒ no readiness checks ⇒ /readyz is unconditionally ready.
+		Readiness: nil,
+		// The OIDC services do not exist yet; a nil Registrar mounts no operations,
+		// so the server serves only the infrastructure routes.
+		Register:         nil,
 		Tracing:          cfg.TracingEnabled,
 		InstallRateLimit: installRateLimit,
-		InstallAuthz:     installAuthz,
-		FinalizeAuthz:    finalizeAuthz,
 	})
 
 	server := &http.Server{
@@ -171,110 +134,9 @@ func New(
 		metricsServer: metricsServer,
 		logger:        logger,
 		grace:         cfg.ShutdownGrace,
-		pool:          pool,
 		rateLimiter:   rateLimiter,
 		traceShutdown: traceShutdown,
 	}, nil
-}
-
-// resolveStore returns the todo.Repository to wire. An injected repository is
-// used as-is with no pool or readiness check (tests, or an integrator-supplied
-// adapter); otherwise it connects the PostgreSQL adapter and returns the pool
-// (for shutdown) and a connectivity readiness check.
-func resolveStore(
-	ctx context.Context,
-	cfg config.Config,
-	injected todo.Repository,
-) (todo.Repository, *pgxpool.Pool, []adapterhttp.ReadinessCheck, error) {
-	if injected != nil {
-		return injected, nil, nil, nil
-	}
-
-	pool, err := postgres.Connect(ctx, postgres.Config{
-		URL:      cfg.DatabaseURL,
-		MaxConns: cfg.DBMaxConns,
-		Tracing:  cfg.TracingEnabled,
-	})
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("connect postgres: %w", err)
-	}
-
-	repo := todopostgres.NewTodoRepository(pool)
-	readiness := []adapterhttp.ReadinessCheck{{Name: "postgres", Check: repo.Ping}}
-
-	return repo, pool, readiness, nil
-}
-
-// authzInstaller builds the authorization engine and returns a hook that
-// installs the authn/authz Huma middleware on the API. The Authorizer merges the
-// base cross-cutting policies with each domain slice's Contribution — the todo
-// slice contributes its policies, actions, and a repo-backed fact resolver, so
-// an attribute policy can load a todo lazily through repo. Adding a resource adds
-// one Contribution here. cfg.AuthzPolicyDir, when set, loads the base policies
-// from that directory instead of the embedded base.cedar.
-//
-// Authentication is resolved through WithAuthenticator when one is injected
-// (tests, or an integrator-supplied verifier); otherwise the shipped
-// PostgreSQL-backed API-key authenticator is wired, which needs a pool when
-// authorization is enabled. The middleware is inert when cfg.AuthzEnabled is
-// false, keeping every route working without authentication.
-func authzInstaller(
-	cfg config.Config,
-	repo todo.Repository,
-	pool *pgxpool.Pool,
-	logger *slog.Logger,
-	injected authz.Authenticator,
-) (func(huma.API), func(huma.API), error) {
-	authorizer, err := authz.New(
-		[]authz.Contribution{todoauthz.Contribution(repo)},
-		authz.WithPolicyDir(cfg.AuthzPolicyDir),
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build authorizer: %w", err)
-	}
-
-	authenticator, err := resolveAuthenticator(cfg, pool, injected)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// install registers the middleware before resources are mounted; finalize
-	// stamps the OpenAPI security after — the split Huma's registration-time
-	// middleware snapshot requires.
-	install := func(api huma.API) {
-		authz.NewMiddleware(api, authenticator, authorizer, logger, cfg.AuthzEnabled).Install()
-	}
-	finalize := func(api huma.API) {
-		authz.NewMiddleware(api, authenticator, authorizer, logger, cfg.AuthzEnabled).Finalize()
-	}
-
-	return install, finalize, nil
-}
-
-// resolveAuthenticator selects the authenticator the middleware runs. An injected
-// authenticator (WithAuthenticator) is used as-is, the seam tests use to satisfy
-// authz without a database and integrators use to plug in a real verifier.
-// Otherwise the shipped PostgreSQL-backed API-key authenticator is wired, which
-// requires a pool when authorization is enabled; when disabled the middleware
-// never runs, so a nil authenticator is harmless.
-func resolveAuthenticator(
-	cfg config.Config,
-	pool *pgxpool.Pool,
-	injected authz.Authenticator,
-) (authz.Authenticator, error) {
-	if injected != nil {
-		return injected, nil
-	}
-
-	if cfg.AuthzEnabled && pool == nil {
-		return nil, errors.New("authz-enabled requires a database connection for the api-key store")
-	}
-
-	if pool == nil {
-		return nil, nil //nolint:nilnil // a disabled middleware never invokes the authenticator.
-	}
-
-	return apikey.NewAuthenticator(apikey.NewStore(pool)), nil
 }
 
 // buildRateLimiter constructs the rate limiter and the hook that installs the
@@ -302,63 +164,14 @@ func (a *App) Handler() http.Handler {
 }
 
 // OpenAPIYAML builds the API without binding a listener and returns the
-// OpenAPI 3.0.3 specification as YAML. The repository is never invoked while
-// generating the spec, so a no-op stub stands in for the real adapter and no
-// database connection is required.
-//
-// The routes are tagged with their authorization declarations, so the export
-// also stamps the security scheme and per-operation requirements via
-// authz.DocumentSecurity — independently of the runtime --authz-enabled flag, so
-// the committed spec always advertises the protection the routes declare.
+// OpenAPI 3.0.3 specification as YAML. In the skeleton slice no OIDC operations
+// are registered, so the document describes only the base API surface; later
+// slices register the protocol operations through the Registrar.
 func OpenAPIYAML(version string) ([]byte, error) {
-	service := todo.NewService(noopRepository{}, nil)
-
-	spec, err := adapterhttp.SpecYAML(version, registerResources(service), authz.DocumentSecurity)
+	spec, err := adapterhttp.SpecYAML(version, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build openapi spec: %w", err)
 	}
 
 	return spec, nil
-}
-
-// noopRepository is a todo.Repository that performs no persistence. It exists
-// solely to construct the service when generating the OpenAPI document
-// server-lessly, where the repository is never invoked.
-type noopRepository struct{}
-
-func (noopRepository) Save(_ context.Context, _ todo.Todo) error { return nil }
-
-func (noopRepository) FindByID(_ context.Context, _ string) (todo.Todo, error) {
-	return todo.Todo{}, todo.ErrNotFound
-}
-
-func (noopRepository) List(_ context.Context, _ todo.PageQuery) (todo.PageResult, error) {
-	return todo.PageResult{}, nil
-}
-
-// apiVersionV1 is the URL path prefix for version 1 of the resource API. Every
-// resource operation is mounted beneath it (so the version is explicit in the
-// URL and the OpenAPI paths); the infrastructure routes (/healthz, /readyz,
-// /metrics, and the OpenAPI/docs endpoints) are operational, not part of the
-// versioned API contract, so they stay unprefixed at the root.
-const apiVersionV1 = "/v1"
-
-// registerResources composes the per-resource HTTP adapters mounted on the API,
-// grouped under the current API version prefix.
-//
-// Add a new resource by constructing its service above and adding one Register
-// call here, onto the same version group.
-//
-// Introduce a breaking revision by adding a sibling group — v2 :=
-// huma.NewGroup(api, "/v2") — and registering the changed resources on it;
-// unchanged resources keep registering on v1. Both versions then serve side by
-// side and share the one OpenAPI document. huma.NewGroup returns a huma.API, so
-// a resource's Register call is identical whether it mounts on a version group
-// or the root API, and the authz middleware installed on the root API (before
-// this runs) is inherited by every grouped route.
-func registerResources(todoService *todo.Service) adapterhttp.Registrar {
-	return func(api huma.API) {
-		v1 := huma.NewGroup(api, apiVersionV1)
-		httpapi.Register(v1, todoService)
-	}
 }
