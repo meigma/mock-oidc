@@ -111,3 +111,31 @@ Open threads:
   master@c275a16; workflow launching with 4 sequential impl stages (domain core →
   services+adapters+mocks → httpapi+transport → composition+seed), 3 reviewers
   (fidelity opus, protocol-correctness opus, mechanical sonnet), repair, DoD.
+
+## 2026-07-02 07:27 — Slice 1 implemented; PR #9 open
+- Workflow wf_b40f71b5-207 completed (9 agents, ~1.36M subagent tokens, ~2.1h).
+  All 8 functional DoD items PASS, incl. the C1 tracer-bullet proof: testcontainers
+  boots mock-oidc:dev zero-config, stock verifier (golang-jwt/jwt/v5) completes
+  discovery → JWKS → client_credentials mint → signature+claims verification.
+- Protocol-correctness review caught a REAL major pre-merge: discovery advertised
+  ES256/ES384 the signer couldn't produce (would 500 + serve malformed kty=RSA/
+  alg=ES256 JWKs). Repair implemented the EC signing path (P-256/P-384, RFC 7518
+  R‖S) per design rather than dropping the algs; new constant-sync test signs+
+  verifies a probe token per advertised algorithm (all 8).
+- Notable deviations (documented in commits/PR): no external JOSE dep — signing
+  adapter hand-rolls compact JWS with stdlib crypto; NewDiscoveryDocument takes
+  (base, id, algs); no Signer.Algorithms() port (plan §2 single-source rule);
+  memory stubs for S2/S3/S5 ports NOT created (ports don't exist yet — correct).
+- GPG saga: subagents' pinentry cancelled non-interactively → 11/15 commits were
+  unsigned. Probe → Josh cached passphrase → re-signed via
+  `git rebase --exec 'git commit --amend --no-edit -S' 7245cb3`; all 15 now G-good
+  (key 5615DDABF6425880). LESSON: subagent commits sign only while the gpg-agent
+  cache is warm; check `git log --format='%G?'` before pushing agent-authored
+  branches, and re-sign via rebase --exec after a passphrase refresh.
+- DoD side-note: the OrbStack docker daemon was wedged; DoD agent recovered it by
+  quitting OrbStack and `orb start` (user containers came back; used host 18080
+  since 8080 is occupied by phoenix-web).
+- PR #9 opened (squash): "feat: add core token pipeline with discovery, jwks, and
+  client_credentials (slice 1)" — https://github.com/meigma/mock-oidc/pull/9
+- Next: await review/merge of PR #9 → tick Slice 1 plan boxes, remove worktree,
+  start Slice 2 (authorization code + interactive login + ID token).
