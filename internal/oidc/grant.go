@@ -59,6 +59,31 @@ func (g GrantType) IssuesIDToken() bool {
 	}
 }
 
+// EchoesScope reports whether this grant echoes the request `scope` in its token
+// response. Every grant echoes it except token-exchange, whose response omits
+// scope entirely (catalog token-response matrix, lines 125-132).
+func (g GrantType) EchoesScope() bool {
+	switch g {
+	case GrantAuthorizationCode, GrantClientCredentials, GrantPassword,
+		GrantRefreshToken, GrantJWTBearer:
+		return true
+	case GrantTokenExchange:
+		return false
+	default:
+		return false
+	}
+}
+
+// IssuedTokenType reports the RFC 8693 `issued_token_type` this grant stamps on
+// its response. Only token-exchange carries one (the access-token URN); every
+// other grant returns the empty value, which the wire DTO omits.
+func (g GrantType) IssuedTokenType() IssuedTokenType {
+	if g == GrantTokenExchange {
+		return IssuedTokenAccessToken
+	}
+	return ""
+}
+
 // ParseGrantType parses the form `grant_type` into a GrantType. It is on the
 // request path, so it returns a typed *ProtocolError: blank -> invalid_request
 // (missing parameter); unknown -> invalid_grant "grant_type <x> not supported."

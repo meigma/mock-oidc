@@ -6,12 +6,13 @@ package oidc
 // RefreshToken. The httpapi adapter maps this to the wire DTO, applying omitempty
 // so the id_token/refresh_token keys are absent when unset.
 type TokenResponse struct {
-	TokenType    TokenType
-	AccessToken  SignedToken
-	IDToken      SignedToken  // set for authorization_code (and other id-token grants)
-	RefreshToken RefreshToken // set for grants that issue a refresh token
-	ExpiresIn    int64        // seconds; derived from the same Clock as exp (parity correction)
-	Scope        Scopes
+	TokenType       TokenType
+	AccessToken     SignedToken
+	IDToken         SignedToken     // set for authorization_code (and other id-token grants)
+	RefreshToken    RefreshToken    // set for grants that issue a refresh token
+	IssuedTokenType IssuedTokenType // set only for token-exchange (RFC 8693 access-token URN)
+	ExpiresIn       int64           // seconds; derived from the same Clock as exp (parity correction)
+	Scope           Scopes
 }
 
 // IntrospectionResult is the typed RFC 7662 introspection outcome. Active

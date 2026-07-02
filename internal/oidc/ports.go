@@ -20,10 +20,21 @@ type KeyStore interface {
 	PublicKeys(ctx context.Context, id IssuerID) (JWKS, error)
 }
 
-// Signer mints signed JWTs. The unsigned Token (header + claims + KeyID) is a
-// pure domain value; the adapter holds the private key and performs the JWS,
-// stamping alg/kid/typ from the Token's header. JOSE compact-serialization lives
-// entirely in the signing adapter, never in the domain.
+// Signer is the JOSE-serialization seam: it mints signed JWTs and performs the
+// inverse, deliberately-unverified decode the delegation grants need. The
+// unsigned Token (header + claims + KeyID) is a pure domain value; the adapter
+// holds the private key and performs the JWS, stamping alg/kid/typ from the
+// Token's header. JOSE compact-serialization lives entirely in the signing
+// adapter, never in the domain.
+//
+// ParseUnverified lives here (on Signer) rather than on TokenVerifier by design.
+// TokenVerifier's contract is genuine verification (signature + iss + typ + times)
+// and its sole consumer is the SessionService (/userinfo, /introspect); grafting a
+// no-verification parse onto it would blur that contract. The delegation grants
+// need only the payload of an inbound compact JWS, and they run inside the
+// TokenService, which already holds this Signer — so the unverified parse belongs
+// on the same seam TokenService already depends on (TDD §8.8 "reuses Signer"). The
+// signing adapter satisfies both ports, so no wiring changes.
 //
 // Signer deliberately exposes no Algorithms() method: the advertised set is the
 // domain constant SupportedSigningAlgorithms(), and the constant-sync test
@@ -31,6 +42,13 @@ type KeyStore interface {
 type Signer interface {
 	// Sign serializes and signs tok for issuer id, returning the compact JWS.
 	Sign(ctx context.Context, id IssuerID, tok Token) (SignedToken, error)
+	// ParseUnverified decodes the claims of a compact JWS WITHOUT checking its
+	// signature, issuer, or temporal claims — the on-behalf-of assertion and
+	// token-exchange subject_token are parsed, not verified (catalog lines 97-98).
+	// It must reject structurally-malformed input (non-3-segment, over-length, or
+	// undecodable header/payload) with a typed invalid_request *ProtocolError and
+	// never panic, never trust the header alg, and never perform any key op.
+	ParseUnverified(ctx context.Context, token SignedToken) (ClaimSet, error)
 }
 
 // IssuerRecord is the static, per-issuer state the registry holds: the issuer's

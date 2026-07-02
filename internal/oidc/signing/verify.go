@@ -26,6 +26,34 @@ var ErrTokenVerification = errors.New("signing: token verification failed")
 // JWS (header.payload.signature).
 const compactSegments = 3
 
+// maxCompactTokenBytes caps the size of an inbound compact JWS accepted for
+// unverified parsing. Delegation assertions/subject tokens are small; a 64 KiB
+// ceiling defends the parser against pathological input while comfortably
+// clearing any legitimate JWT.
+const maxCompactTokenBytes = 64 * 1024
+
+// ParseUnverified implements the [oidc.Signer] unverified-decode facet: it
+// returns the claims of a compact JWS WITHOUT any signature, issuer, or temporal
+// check — the on-behalf-of assertion and token-exchange subject_token are parsed,
+// not verified (catalog lines 97-98). It is hardened at the edge: it caps the
+// token length, requires exactly three segments, and maps every decode failure to
+// a typed invalid_request [oidc.ProtocolError] (never a panic, never a 500). The
+// header alg is never read — no key operation happens at all.
+func (p *Provider) ParseUnverified(_ context.Context, token oidc.SignedToken) (oidc.ClaimSet, error) {
+	if len(token) > maxCompactTokenBytes {
+		return oidc.ClaimSet{}, oidc.MalformedRequest("token exceeds maximum accepted length")
+	}
+	parts := strings.Split(string(token), ".")
+	if len(parts) != compactSegments {
+		return oidc.ClaimSet{}, oidc.MalformedRequest("malformed token: expected a compact JWS")
+	}
+	claims, err := parseClaims(parts[1])
+	if err != nil {
+		return oidc.ClaimSet{}, oidc.MalformedRequest("malformed token: undecodable payload")
+	}
+	return claims, nil
+}
+
 // Verify implements [oidc.TokenVerifier]. It is deliberately strict — the server
 // verifies only its OWN tokens against known keys (kid == issuerID) — and applies
 // the resolved-JOSE hardening rules:

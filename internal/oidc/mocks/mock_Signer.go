@@ -38,6 +38,72 @@ func (_m *Signer) EXPECT() *Signer_Expecter {
 	return &Signer_Expecter{mock: &_m.Mock}
 }
 
+// ParseUnverified provides a mock function for the type Signer
+func (_mock *Signer) ParseUnverified(ctx context.Context, token oidc.SignedToken) (oidc.ClaimSet, error) {
+	ret := _mock.Called(ctx, token)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParseUnverified")
+	}
+
+	var r0 oidc.ClaimSet
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.SignedToken) (oidc.ClaimSet, error)); ok {
+		return returnFunc(ctx, token)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.SignedToken) oidc.ClaimSet); ok {
+		r0 = returnFunc(ctx, token)
+	} else {
+		r0 = ret.Get(0).(oidc.ClaimSet)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, oidc.SignedToken) error); ok {
+		r1 = returnFunc(ctx, token)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// Signer_ParseUnverified_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ParseUnverified'
+type Signer_ParseUnverified_Call struct {
+	*mock.Call
+}
+
+// ParseUnverified is a helper method to define mock.On call
+//   - ctx context.Context
+//   - token oidc.SignedToken
+func (_e *Signer_Expecter) ParseUnverified(ctx any, token any) *Signer_ParseUnverified_Call {
+	return &Signer_ParseUnverified_Call{Call: _e.mock.On("ParseUnverified", ctx, token)}
+}
+
+func (_c *Signer_ParseUnverified_Call) Run(run func(ctx context.Context, token oidc.SignedToken)) *Signer_ParseUnverified_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 oidc.SignedToken
+		if args[1] != nil {
+			arg1 = args[1].(oidc.SignedToken)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *Signer_ParseUnverified_Call) Return(claimSet oidc.ClaimSet, err error) *Signer_ParseUnverified_Call {
+	_c.Call.Return(claimSet, err)
+	return _c
+}
+
+func (_c *Signer_ParseUnverified_Call) RunAndReturn(run func(ctx context.Context, token oidc.SignedToken) (oidc.ClaimSet, error)) *Signer_ParseUnverified_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Sign provides a mock function for the type Signer
 func (_mock *Signer) Sign(ctx context.Context, id oidc.IssuerID, tok oidc.Token) (oidc.SignedToken, error) {
 	ret := _mock.Called(ctx, id, tok)

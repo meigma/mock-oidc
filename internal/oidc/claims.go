@@ -4,6 +4,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Scope is a single OAuth2 scope token.
@@ -220,6 +222,34 @@ func (c ClaimSet) WithAZP(client ClientID) ClaimSet {
 	out := c.clone()
 	azp := client
 	out.Azp = &azp
+	return out
+}
+
+// CopyWithOverrides is the delegation-grant mint transform (jwt-bearer,
+// token-exchange): it copies ALL inbound claims verbatim, then overrides only the
+// registered fields a re-issued token must own — iss (from the resolved issuer's
+// base URL), iat/nbf/exp (from now + the callback expiry), a fresh jti, and a
+// baseline aud (the callback's audience) — and finally folds in the callback's
+// addClaims. It is copy-on-write: the receiver (the parsed inbound claim set) is
+// never mutated, so the caller can assert the inbound value is unchanged.
+//
+// It deliberately does NOT stamp azp or tid: only authorization_code auto-adds
+// azp, and tid is a default-claim seed the delegation path does not apply — the
+// delegation grants copy the subject token's claims verbatim and override only the
+// listed registered fields (catalog lines 97-98; TDD §8.8). A grant with a
+// request-specific audience (token-exchange's `audience` param) refines aud after
+// this call via the callback's own precedence.
+func (c ClaimSet) CopyWithOverrides(issuer Issuer, cb TokenCallback, now Instant) ClaimSet {
+	out := c.clone()
+	out.Issuer = issuer.BaseURL.IssuerURL(issuer.ID)
+	out.IssuedAt = now
+	out.NotBefore = now
+	out.Expiry = now.Add(cb.Expiry())
+	out.JWTID = uuid.NewString()
+	out.Audience = cb.Audience(CallbackInput{})
+	for _, e := range cb.ExtraClaims(CallbackInput{}).Custom.Entries() {
+		out.Custom.Set(e.Name, e.Value)
+	}
 	return out
 }
 
