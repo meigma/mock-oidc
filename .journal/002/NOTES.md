@@ -101,3 +101,13 @@ Open threads:
 - Inherited version lineage: .release-please-manifest.json still carries the
   template's 1.0.4 version; CHANGELOG history was identifier-renamed. Decide on a
   version/CHANGELOG reset before the first real release.
+
+## 2026-07-01 21:52 — PR #8 merged; Slice 1 started
+- PR #8 squash-merged to master as c275a16 (CI green: ci + Pages + Kusari; release
+  dry-runs skipped as designed). Local master ff'd (had no upstream tracking —
+  now set to origin/master). Remote + local branch deleted, worktree removed.
+- Plan updated: all 46 Slice 0 checkboxes ticked + DONE status line added.
+- Slice 1 (core token pipeline) begun: worktree feat/slice-1-token-pipeline off
+  master@c275a16; workflow launching with 4 sequential impl stages (domain core →
+  services+adapters+mocks → httpapi+transport → composition+seed), 3 reviewers
+  (fidelity opus, protocol-correctness opus, mechanical sonnet), repair, DoD.
