@@ -21,6 +21,17 @@
   replacement**; **parity only, no new features yet** (differentiation = quality/DX/
   distribution); interactive login/playground match upstream's *concept*, UX redesign is
   post-parity.
+- Decision (2026-07-02, Josh): the signing adapter uses **stdlib crypto only — no external
+  JOSE library** (deviation from the TDD's go-jose assumption). Rationale: zero third-party
+  code in the key-holding package, emission-only JOSE scope, byte-level control over the
+  typed ClaimSet wire format; independent verification in tests via golang-jwt/jwt/v5.
+  **Re-assess at Slice 3** when TokenVerifier (D-4: JWT + at+jwt) lands — marker note sits
+  atop the plan's Slice 3 section.
+- Ops gotchas (2026-07-02): agent-authored commits sign only while the gpg-agent cache is
+  warm — check `git log --format='%G?'` before pushing, re-sign via
+  `git rebase --exec 'git commit --amend --no-edit -S' <base>`. Moon's task cache can mask
+  drift gates (mockery-check passed locally on stale cache, failed in CI) — for DoD runs,
+  regenerate directly (`mise x -- mockery`) or `moon run --force` the drift checks.
 - Execution blueprint: `.journal/002/mock-oidc-implementation-plan.md` — the working,
   slice-by-slice implementation plan (Slices 0–6 + cross-cutting testing) that turns the
   technical design into an ordered, file-level, functionally-gated task list. Start here to

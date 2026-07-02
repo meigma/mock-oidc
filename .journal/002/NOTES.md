@@ -139,3 +139,23 @@ Open threads:
   client_credentials (slice 1)" — https://github.com/meigma/mock-oidc/pull/9
 - Next: await review/merge of PR #9 → tick Slice 1 plan boxes, remove worktree,
   start Slice 2 (authorization code + interactive login + ID token).
+
+## 2026-07-02 08:05 — PR #9 merged after CI fix; Slice 2 starting
+- JOSE decision (Josh): keep stdlib-only signing, re-assess at Slice 3 when
+  TokenVerifier lands. Recorded in TECH_NOTES + a marker note atop the plan's
+  Slice 3 section.
+- CI initially FAILED on PR #9: root:mockery-check — committed mocks had
+  `interface{}` where CI's pinned mockery v3.7.1 emits `any`. Root cause: local
+  `moon run mockery`/`mockery-check` was serving a stale task cache, masking the
+  drift (DoD had reported it green). Fix: regenerated via direct `mise x -- mockery`
+  (bypassing moon cache), committed 68c3787, CI green. LESSON recorded in
+  TECH_NOTES: regenerate drift-gate outputs directly or --force in DoD runs.
+- PR #9 squash-merged → master@172b2cf. Branch + worktree removed. 50 Slice 1
+  plan boxes ticked + DONE status line.
+- Noticed: two dependabot branches open (otelhttp 0.69.0, x/time 0.15.0) — surface
+  to Josh for babysitting after slices land.
+- Slice 2 starting: worktree feat/slice-2-auth-code off master@172b2cf; workflow
+  with 3 sequential impl stages (domain+PKCE+CodeStore+services → httpapi
+  authorize/login/HTML+favicon+token-DTO → composition+R3), fidelity+protocol
+  (opus) + mechanical (sonnet) reviewers, repair, DoD. Agents told to commit
+  --no-gpg-sign if pinentry fails; orchestrator re-signs before push.
