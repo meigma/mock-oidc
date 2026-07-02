@@ -165,6 +165,9 @@ func TestTokenServiceJWTBearer(t *testing.T) {
 		assert.Equal(t, delegationIssuerURL, claims.Issuer) // iss overridden
 		assert.NotEqual(t, "inbound-jti", claims.JWTID)     // fresh jti
 		assert.Equal(t, now.Add(time.Hour), claims.Expiry)  // fresh exp
+		// aud is request-aware: the non-OIDC request scope drives the 4-step chain
+		// (mirroring exchange), not the CallbackInput{} baseline that yields ["default"].
+		assert.Equal(t, oidc.Audience{"api:read"}, claims.Audience)
 	})
 
 	t.Run("falls back to the assertion scope claim", func(t *testing.T) {
@@ -309,6 +312,31 @@ func TestTokenExchangeMalformedSubjectToken(t *testing.T) {
 	assert.Equal(t, oidc.CodeInvalidRequest, perr.Code)
 }
 
+// TestTokenExchangeNoClientAuth pins the domain-layer enforcement of RFC 8693's
+// client-authentication requirement (catalog line 109): a token-exchange request
+// that presents ClientAuthNone is rejected as invalid_request with the exact
+// "request must contain some form of ClientAuthentication." text, before the
+// subject_token is ever parsed or a token signed. The httpapi edge covers the same
+// rule over HTTP; this pins it at the service boundary.
+func TestTokenExchangeNoClientAuth(t *testing.T) {
+	t.Parallel()
+
+	now := oidc.NewInstant(time.Unix(1_700_000_000, 0))
+	h := newDelegationHarness(t, now)
+	// Neither ParseUnverified nor Sign may be reached: the auth check fails first.
+
+	req, err := oidc.NewTokenRequest(
+		"default", oidc.GrantTokenExchange, oidc.Client{ID: "app", Auth: oidc.ClientAuthNone},
+	).WithSubjectToken("subject.jws", "", "")
+	require.NoError(t, err)
+
+	_, err = h.svc.Issue(context.Background(), delegationOrigin(), req)
+	var perr *oidc.ProtocolError
+	require.ErrorAs(t, err, &perr)
+	assert.Equal(t, oidc.CodeInvalidRequest, perr.Code)
+	assert.Equal(t, "request must contain some form of ClientAuthentication.", perr.Description)
+}
+
 // TestCopyWithOverrides asserts the delegation copy transform: it overrides only
 // iss/iat/nbf/exp/jti/aud, copies every other inbound claim verbatim, stamps
 // NEITHER azp NOR tid, and never mutates the receiver.
@@ -333,7 +361,7 @@ func TestCopyWithOverrides(t *testing.T) {
 		Custom:   custom,
 	}
 
-	got := inbound.CopyWithOverrides(issuer, cb, now)
+	got := inbound.CopyWithOverrides(issuer, cb, now, func() string { return "fresh-jti" })
 
 	// Overridden registered fields.
 	assert.Equal(t, delegationIssuerURL, got.Issuer)

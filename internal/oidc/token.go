@@ -305,7 +305,8 @@ func (s *TokenService) jwtBearer(
 	}
 
 	now := s.clock.Now()
-	claims := inbound.CopyWithOverrides(issuer, cb, now)
+	claims := inbound.CopyWithOverrides(issuer, cb, now, s.newID)
+	claims.Audience = cb.Audience(in) // request-aware aud, mirroring exchange (catalog line 97)
 	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
@@ -344,7 +345,7 @@ func (s *TokenService) exchange(
 		return TokenResponse{}, err
 	}
 	now := s.clock.Now()
-	claims := inbound.CopyWithOverrides(issuer, cb, now)
+	claims := inbound.CopyWithOverrides(issuer, cb, now, s.newID)
 	claims.Audience = cb.Audience(in) // audience precedence (catalog line 98)
 	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
 	if err != nil {
