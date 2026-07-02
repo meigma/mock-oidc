@@ -565,9 +565,12 @@ func (s *TokenService) authorizationCode(
 // refreshToken redeems a refresh token: it looks up the stored record, enforces
 // the strict cross-issuer binding (the CORRECTED client text), and re-mints a
 // fresh access token — plus an id_token when the record carried a nonce — with a
-// FRESH jti/iat/exp but the SAME subject. Claim policy is replayed from the
-// stored callback (S3 resolution is stored-callback → default only; the S5
-// CallbackQueue is not consulted here). When rotateRefreshToken is enabled the
+// FRESH jti/iat/exp but the SAME subject. Claim policy is resolved by
+// resolveRefreshCallback, which consults the SAME enqueued-scenario queue as the
+// other grants FIRST (issuer-matched head, one-shot), then falls back to the
+// callback stored on the refresh record, then the default — so an enqueued
+// scenario steers refresh redemption too (the priority-parity invariant). When
+// rotateRefreshToken is enabled the
 // old token is removed and a new RefreshBareUUID token is returned; otherwise the
 // same refresh token is echoed back so it keeps redeeming.
 func (s *TokenService) refreshToken(
