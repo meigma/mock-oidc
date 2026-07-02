@@ -26,6 +26,41 @@ func TestLoadDefaults(t *testing.T) {
 	assert.InDelta(t, defaultRateLimitRPS, cfg.RateLimitRPS, 0.0001)
 	assert.Equal(t, defaultRateLimitBurst, cfg.RateLimitBurst)
 	assert.False(t, cfg.TracingEnabled, "tracing is opt-in (needs an external collector)")
+	assert.True(t, cfg.ControlEnabled, "the /_mock control plane is ON by default")
+	assert.Empty(t, cfg.ControlAddr, "control plane co-locates on the API listener by default")
+	assert.Empty(t, cfg.ControlToken, "the control-token gate is disabled by default")
+}
+
+func TestLoadControlFromFlags(t *testing.T) {
+	t.Parallel()
+
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(flags)
+	require.NoError(t, flags.Set("control-enabled", "false"))
+	require.NoError(t, flags.Set("control-addr", ":9100"))
+	require.NoError(t, flags.Set("control-token", "s3cret"))
+
+	vp := viper.New()
+	require.NoError(t, vp.BindPFlags(flags))
+
+	cfg := Load(vp)
+	assert.False(t, cfg.ControlEnabled)
+	assert.Equal(t, ":9100", cfg.ControlAddr)
+	assert.Equal(t, "s3cret", cfg.ControlToken)
+}
+
+func TestLoadControlEnvOverride(t *testing.T) {
+	t.Setenv("MOCK_OIDC_CONTROL_ENABLED", "false")
+	t.Setenv("MOCK_OIDC_CONTROL_TOKEN", "envtoken")
+
+	vp := viper.New()
+	vp.SetEnvPrefix("MOCK_OIDC")
+	vp.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	vp.AutomaticEnv()
+
+	cfg := Load(vp)
+	assert.False(t, cfg.ControlEnabled, "MOCK_OIDC_CONTROL_ENABLED=false disables the control plane")
+	assert.Equal(t, "envtoken", cfg.ControlToken)
 }
 
 func TestLoadRateLimitFromFlags(t *testing.T) {
@@ -94,6 +129,19 @@ func TestValidate(t *testing.T) {
 	metricsSameAsAddr := base
 	metricsSameAsAddr.MetricsAddr = base.Addr
 	require.Error(t, metricsSameAsAddr.Validate())
+
+	controlSameAsAddr := base
+	controlSameAsAddr.ControlAddr = base.Addr
+	require.Error(t, controlSameAsAddr.Validate())
+
+	controlSameAsMetrics := base
+	controlSameAsMetrics.MetricsAddr = ":9090"
+	controlSameAsMetrics.ControlAddr = ":9090"
+	require.Error(t, controlSameAsMetrics.Validate())
+
+	controlDistinct := base
+	controlDistinct.ControlAddr = ":9100"
+	require.NoError(t, controlDistinct.Validate())
 
 	negativeTimeout := base
 	negativeTimeout.RequestTimeout = -time.Second

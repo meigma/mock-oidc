@@ -131,6 +131,66 @@ func TestDefaultSeedRotateRefreshTokenFalse(t *testing.T) {
 	assert.False(t, config.DefaultSeed().RotateRefreshToken)
 }
 
+// TestLoadSeedTokenCallbacks verifies the tokenCallbacks parser groups callbacks
+// by issuer in declared order and selects the RequestMapping vs Default shape from
+// the presence of requestMappings — the same anti-corruption path the control
+// scenario DTO uses.
+func TestLoadSeedTokenCallbacks(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{
+		"tokenCallbacks": [
+			{"issuer": "default", "subject": "alice", "claims": {"acr": "Level4"}},
+			{"issuer": "default", "requestMappings": [
+				{"param": "client_id", "match": "web", "claims": {"aud": "web-api"}}
+			]},
+			{"issuer": "other", "audience": ["svc"]}
+		]
+	}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	require.Len(t, seed.IssuerRecords, 2, "two distinct issuers, grouped")
+
+	def := seed.IssuerRecords[0]
+	assert.Equal(t, oidc.IssuerID("default"), def.ID)
+	require.Len(t, def.Callbacks, 2, "default's two callbacks kept in declared order")
+	assert.IsType(t, oidc.DefaultTokenCallback{}, def.Callbacks[0], "no requestMappings -> default callback")
+	assert.IsType(t, oidc.RequestMappingCallback{}, def.Callbacks[1], "requestMappings -> mapping callback")
+
+	other := seed.IssuerRecords[1]
+	assert.Equal(t, oidc.IssuerID("other"), other.ID)
+	require.Len(t, other.Callbacks, 1)
+}
+
+// TestLoadSeedTokenCallbacksRejectsReservedIssuer verifies a reserved "_mock"
+// issuer in a tokenCallbacks entry is a hard error, not a silently-materialized
+// issuer.
+func TestLoadSeedTokenCallbacksRejectsReservedIssuer(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"tokenCallbacks": [{"issuer": "_mock"}]}`)
+
+	_, err := config.LoadSeed(vp)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, oidc.ErrReservedIssuer)
+}
+
+// TestLoadSeedNoTokenCallbacks verifies an absent tokenCallbacks leaves the seed's
+// IssuerRecords empty (every issuer is zero-config, materialized on demand).
+func TestLoadSeedNoTokenCallbacks(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Empty(t, seed.IssuerRecords)
+}
+
 // TestLoadSeedInlineOverridesPath verifies JSON_CONFIG (inline) wins over
 // JSON_CONFIG_PATH.
 func TestLoadSeedInlineOverridesPath(t *testing.T) {
