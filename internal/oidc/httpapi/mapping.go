@@ -165,9 +165,10 @@ func audValue(aud oidc.Audience, collapse bool) any {
 // closed grant set and only the fields that grant uses, producing a typed
 // command. ParseGrantType yields the typed *ProtocolError for blank/unknown
 // grant_type (no bare sentinel, no map[string]any), so the edge never 500s on the
-// two most basic error cases. Only client_credentials is wired this slice; other
-// (valid) grants decode to the base command and the token service reports them as
-// unsupported until their slice lands.
+// two most basic error cases. client_credentials, authorization_code, and
+// refresh_token decode their grant-specific fields here; other (valid) grants
+// decode to the base command and the token service reports them as unsupported
+// until their slice lands.
 func decodeTokenRequest(iss oidc.IssuerID, f FlatForm, authz string) (oidc.TokenRequest, error) {
 	grant, err := oidc.ParseGrantType(f.Get("grant_type")) // "" → MissingParameter; junk → UnsupportedGrant
 	if err != nil {
@@ -182,6 +183,9 @@ func decodeTokenRequest(iss oidc.IssuerID, f FlatForm, authz string) (oidc.Token
 			f.Get("code_verifier"),
 			f.Get("redirect_uri"),
 		), nil
+	}
+	if grant == oidc.GrantRefreshToken {
+		return base.WithRefreshToken(oidc.RefreshToken(f.Get("refresh_token"))), nil
 	}
 	return base, nil
 }

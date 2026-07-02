@@ -322,6 +322,34 @@ func TestEndSessionOmitsAbsentState(t *testing.T) {
 	assert.Equal(t, "https://client.example/after", resp.Header.Get("Location"), "no state appended")
 }
 
+// TestRefreshTokenFlow verifies the refresh grant redeems over the real HTTP
+// surface: the token endpoint decodes the refresh_token form parameter, re-mints
+// a fresh access token (200, Bearer), and — with rotation off — the same refresh
+// token keeps redeeming. This guards the decodeTokenRequest refresh_token branch
+// that TestRevokeFlow's negative assertion could otherwise pass without.
+func TestRefreshTokenFlow(t *testing.T) {
+	t.Parallel()
+
+	env := newLifecycleServer(t)
+	refresh := authCodeRefreshToken(t, env.srv)
+
+	resp, body := postForm(t, env.srv,
+		"grant_type=refresh_token&refresh_token="+url.QueryEscape(refresh)+"&client_id=app")
+	require.Equalf(t, http.StatusOK, resp.StatusCode, "refresh redemption body: %s", body)
+	var first struct {
+		TokenType   string `json:"token_type"`
+		AccessToken string `json:"access_token"`
+	}
+	require.NoError(t, json.Unmarshal(body, &first))
+	assert.Equal(t, "Bearer", first.TokenType)
+	require.NotEmpty(t, first.AccessToken, "refresh re-mints an access token")
+
+	// Rotation is off by default: the same refresh token redeems a second time.
+	resp2, body2 := postForm(t, env.srv,
+		"grant_type=refresh_token&refresh_token="+url.QueryEscape(refresh)+"&client_id=app")
+	require.Equalf(t, http.StatusOK, resp2.StatusCode, "second refresh body: %s", body2)
+}
+
 // TestRevokeFlow verifies the revoke lifecycle end to end: a refresh token minted
 // via the authorization_code flow is revoked (200), a second revoke is idempotent
 // (200), and the revoked token no longer redeems at /token (invalid_grant).
