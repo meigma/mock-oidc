@@ -180,12 +180,23 @@ func (h *handlers) debuggerCallback(
 	ctx context.Context,
 	in *DebuggerCallbackInput,
 ) (*BrowserOutput, error) {
-	if _, err := issuerOf(in); err != nil {
+	issuer, err := issuerOf(in)
+	if err != nil {
 		return h.debuggerError(err), nil
 	}
 	if in.Error != "" {
 		return h.debuggerErrorPage(in.Error, in.ErrorDescription), nil
 	}
+	// The back-channel token endpoint is recomputed from the REQUEST origin (as the
+	// submit leg does), never from the cookie: the flow cookie is unauthenticated,
+	// so deriving the exchange target from it would be an SSRF vector (an arbitrary
+	// host) and could panic. The cookie's redirect_uri is only echoed to /token.
+	base, err := oidc.ResolveBaseURL(originFrom(ctx))
+	if err != nil {
+		//nolint:nilerr // browser surface renders the failure as HTML, never a Go error.
+		return h.debuggerErrorPage("server_error", "could not resolve the request origin"), nil
+	}
+	tokenURL := base.IssuerURL(issuer) + "/token"
 	flow, ok := decodeDebuggerFlow(in.Cookie)
 	if !ok {
 		return h.debuggerErrorPage(
@@ -211,7 +222,6 @@ func (h *handlers) debuggerCallback(
 		"code_verifier": {flow.Verifier},
 	}.Encode()
 
-	tokenURL := flow.RedirectURI[:strings.LastIndex(flow.RedirectURI, "/debugger/callback")] + "/token"
 	status, respBody, err := h.debuggerExchange(ctx, tokenURL, reqBody)
 	if err != nil {
 		//nolint:nilerr // browser surface renders the failure as HTML, never a Go error.
