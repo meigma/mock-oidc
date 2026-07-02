@@ -30,10 +30,20 @@ import (
 
 const testTimeout = 5 * time.Second
 
-// newTestServer wires the real Registrar over the real signing + memory adapters
+// newTestServer wires the real Registrar with interactive login OFF (the
+// zero-config default), suiting the Slice 1 discovery/JWKS/token tests.
+func newTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return newAuthServer(t, false)
+}
+
+// newAuthServer wires the real Registrar over the real signing + memory adapters
 // (no mocks) behind the kept transport router, including the composition-root
 // FallbackWriter strategy so wrong-method protocol routes render the OAuth2 shape.
-func newTestServer(t *testing.T) *httptest.Server {
+// The CodeStore is shared between the AuthorizeService and the TokenService so a
+// code minted at /authorize is redeemable at /token. interactive forces the login
+// page on GET /authorize.
+func newAuthServer(t *testing.T, interactive bool) *httptest.Server {
 	t.Helper()
 
 	signer, err := signing.NewProvider(oidc.RS256, nil)
@@ -41,9 +51,13 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 	registry := memory.NewIssuerRegistry()
 	clock := memory.NewClock()
+	codes := memory.NewCodeStore()
+	refresh := memory.NewRefreshTokenStore()
 	provider := oidc.NewProviderService(registry, signer)
-	tokens := oidc.NewTokenService(registry, signer, signer, clock)
-	deps := httpapi.Deps{Provider: provider, Tokens: tokens}
+	tokens := oidc.NewTokenService(registry, signer, signer, clock,
+		oidc.WithCodeStore(codes), oidc.WithRefreshStore(refresh))
+	authorize := oidc.NewAuthorizeService(codes, clock, interactive)
+	deps := httpapi.Deps{Provider: provider, Tokens: tokens, Authorize: authorize}
 
 	discard := observability.NewLogger(io.Discard, slog.LevelError, "json")
 	handler := adapterhttp.NewRouter(adapterhttp.RouterDeps{
@@ -79,9 +93,16 @@ func doGet(t *testing.T, srv *httptest.Server, path string) (*http.Response, []b
 	return resp, body
 }
 
-func postForm(t *testing.T, srv *httptest.Server, path, form string) (*http.Response, []byte) {
+// postForm POSTs a url-encoded body to the /default/token endpoint (following
+// redirects; the token endpoint never issues one).
+func postForm(t *testing.T, srv *httptest.Server, form string) (*http.Response, []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+path, strings.NewReader(form))
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		srv.URL+"/default/token",
+		strings.NewReader(form),
+	)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := srv.Client().Do(req)
@@ -173,7 +194,7 @@ func TestTokenClientCredentials(t *testing.T) {
 
 	srv := newTestServer(t)
 
-	resp, body := postForm(t, srv, "/default/token", "grant_type=client_credentials&client_id=app")
+	resp, body := postForm(t, srv, "grant_type=client_credentials&client_id=app")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", body)
 
 	var tok struct {
@@ -236,7 +257,7 @@ func TestTokenErrorsCorrectCase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			resp, body := postForm(t, srv, "/default/token", tt.form)
+			resp, body := postForm(t, srv, tt.form)
 			assert.Equal(t, tt.wantStatus, resp.StatusCode)
 			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
