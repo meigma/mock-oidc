@@ -46,6 +46,16 @@ type AuthorizePort interface {
 	) (oidc.AuthorizeResult, error)
 }
 
+// SessionPort is the post-issuance lifecycle use case the driving adapter
+// consumes: /userinfo, /introspect, /revoke, and /endsession. It is satisfied by
+// *oidc.SessionService.
+type SessionPort interface {
+	UserInfo(ctx context.Context, req oidc.UserInfoRequest) (oidc.ClaimSet, error)
+	Introspect(ctx context.Context, req oidc.IntrospectionRequest) (oidc.IntrospectionResult, error)
+	Revoke(ctx context.Context, req oidc.RevocationRequest) error
+	EndSession(ctx context.Context, req oidc.EndSessionRequest) (oidc.EndSessionResult, error)
+}
+
 // Deps are the core services the protocol handlers orchestrate. The composition
 // root builds them from the real signing/memory adapters and passes them here.
 // Logger is optional; when nil the handlers discard the edge warnings (malformed
@@ -54,6 +64,7 @@ type Deps struct {
 	Provider  ProviderPort
 	Tokens    TokenPort
 	Authorize AuthorizePort
+	Session   SessionPort
 	Logger    *slog.Logger
 }
 
@@ -81,6 +92,10 @@ func Register(api huma.API, deps Deps) {
 	h.registerToken(api)
 	h.registerAuthorize(api)
 	h.registerLogin(api)
+	h.registerUserinfo(api)
+	h.registerIntrospect(api)
+	h.registerRevoke(api)
+	h.registerEndSession(api)
 	h.registerFavicon(api)
 
 	stampSecuritySchemes(api)

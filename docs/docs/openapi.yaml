@@ -459,6 +459,156 @@ paths:
       summary: Interactive login submission
       tags:
         - OIDC
+  /{issuer}/endsession:
+    get:
+      operationId: endsession-get
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: post_logout_redirect_uri
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+      responses:
+        "302":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: RP-initiated logout endpoint
+      tags:
+        - OIDC
+    post:
+      operationId: endsession-post
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: post_logout_redirect_uri
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+      responses:
+        "302":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: RP-initiated logout endpoint
+      tags:
+        - OIDC
+  /{issuer}/introspect:
+    post:
+      operationId: introspect
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                token:
+                  type: string
+                token_type_hint:
+                  type: string
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  active:
+                    type: boolean
+                  exp:
+                    format: int64
+                    type: integer
+                  iat:
+                    format: int64
+                    type: integer
+                  iss:
+                    type: string
+                  jti:
+                    type: string
+                  nbf:
+                    format: int64
+                    type: integer
+                  scope:
+                    type: string
+                  sub:
+                    type: string
+                  token_type:
+                    type: string
+                required:
+                  - active
+                type: object
+          description: Success
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: OAuth2 token introspection endpoint
+      tags:
+        - OAuth2
   /{issuer}/jwks:
     get:
       operationId: jwks
@@ -495,6 +645,45 @@ paths:
       summary: JSON Web Key Set
       tags:
         - OIDC
+  /{issuer}/revoke:
+    post:
+      operationId: revoke
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                token:
+                  type: string
+                token_type_hint:
+                  type: string
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: OK
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: OAuth2 token revocation endpoint
+      tags:
+        - OAuth2
   /{issuer}/token:
     post:
       operationId: token
@@ -566,3 +755,35 @@ paths:
       summary: OAuth2 token endpoint
       tags:
         - OAuth2
+  /{issuer}/userinfo:
+    get:
+      operationId: userinfo
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: OK
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: OpenID Connect UserInfo endpoint
+      tags:
+        - OIDC

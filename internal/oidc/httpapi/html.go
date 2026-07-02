@@ -12,9 +12,10 @@ const htmlContentType = "text/html; charset=utf-8"
 
 // The template names, matching the embedded file basenames.
 const (
-	tmplLogin    = "login.html"
-	tmplFormPost = "form_post.html"
-	tmplError    = "error.html"
+	tmplLogin     = "login.html"
+	tmplFormPost  = "form_post.html"
+	tmplError     = "error.html"
+	tmplLoggedOut = "logged_out.html"
 )
 
 // htmlFS embeds the browser-surface templates. They render only through

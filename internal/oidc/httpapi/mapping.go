@@ -81,6 +81,86 @@ func toTokenResponseDTO(r oidc.TokenResponse) TokenResponseDTO {
 	}
 }
 
+// toUserInfoBody projects a verified claim set onto the /userinfo wire body: the
+// ENTIRE claim set verbatim (registered claims + custom, no scoping). aud is
+// echoed in its array form (no single-element collapse) so the response mirrors
+// the token; the introspection edge is the only one that collapses aud.
+func toUserInfoBody(claims oidc.ClaimSet) map[string]any {
+	return claimsToMap(claims, false)
+}
+
+// toIntrospectionBody shapes the RFC 7662 introspection wire body. An inactive
+// result is exactly {"active":false}; an active result carries the verified
+// claims (aud collapsed to a scalar when single-valued) plus active=true and the
+// token_type (default Bearer from the domain result).
+func toIntrospectionBody(result oidc.IntrospectionResult) map[string]any {
+	if !result.Active {
+		return map[string]any{"active": false}
+	}
+	body := claimsToMap(result.Claims, true)
+	body["active"] = true
+	if result.TokenType != "" {
+		body["token_type"] = string(result.TokenType)
+	}
+	return body
+}
+
+// claimsToMap renders a typed ClaimSet as the wire object every claim-bearing
+// lifecycle response shares. Only present claims are emitted (a zero Instant or
+// an empty/nil field is omitted). When collapseAud is set a single-element aud is
+// emitted as a scalar string (RFC 7662 introspection); otherwise aud stays an
+// array (userinfo verbatim). Custom claims are appended in their stored order.
+func claimsToMap(c oidc.ClaimSet, collapseAud bool) map[string]any {
+	m := make(map[string]any)
+	if c.Issuer != "" {
+		m["iss"] = c.Issuer
+	}
+	if c.Subject != "" {
+		m["sub"] = string(c.Subject)
+	}
+	if c.Audience != nil {
+		m["aud"] = audValue(c.Audience, collapseAud)
+	}
+	if t := c.IssuedAt; !t.Time().IsZero() {
+		m["iat"] = t.Unix()
+	}
+	if t := c.NotBefore; !t.Time().IsZero() {
+		m["nbf"] = t.Unix()
+	}
+	if t := c.Expiry; !t.Time().IsZero() {
+		m["exp"] = t.Unix()
+	}
+	if c.JWTID != "" {
+		m["jti"] = c.JWTID
+	}
+	if c.Nonce != nil {
+		m["nonce"] = string(*c.Nonce)
+	}
+	if c.Azp != nil {
+		m["azp"] = string(*c.Azp)
+	}
+	if c.Tenant != nil {
+		m["tid"] = *c.Tenant
+	}
+	if len(c.Scope) > 0 {
+		m["scope"] = c.Scope.String()
+	}
+	for _, e := range c.Custom.Entries() {
+		m[e.Name] = e.Value
+	}
+	return m
+}
+
+// audValue renders the aud claim for the wire: a single-element audience becomes
+// a scalar string when collapse is requested (introspection), otherwise it stays
+// an array. A multi-element audience always stays an array.
+func audValue(aud oidc.Audience, collapse bool) any {
+	if collapse && len(aud) == 1 {
+		return aud[0]
+	}
+	return []string(aud)
+}
+
 // decodeTokenRequest is the anti-corruption boundary for /token: it parses the
 // closed grant set and only the fields that grant uses, producing a typed
 // command. ParseGrantType yields the typed *ProtocolError for blank/unknown
