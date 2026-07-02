@@ -1,7 +1,7 @@
 [project]
-name = "template-go-api-docs"
+name = "mock-oidc-docs"
 version = "0.0.0"
-description = "MkDocs documentation site for the Meigma Go web API server template."
+description = "MkDocs documentation site for the mock-oidc server."
 requires-python = ">=3.14"
 dependencies = [
     "mkdocs-material>=9.7.0",

@@ -1,81 +1,48 @@
 ---
-title: template-go-api Docs
+title: mock-oidc Docs
 slug: /
-description: Meigma starter for Go web (HTTP) API services.
+description: Standalone mock OIDC/OAuth2 authorization server for testing.
 ---
 
-# template-go-api
+# mock-oidc
 
-`template-go-api` is the Meigma starter for building Go web (HTTP) API services.
-It ships a runnable, hexagonal API server (chi + Huma) with a `todo` example
-resource, alongside the shared Meigma repository baseline (Moon tasks, pinned CI,
-Dependabot, and an enabled release layer). Persistence is a PostgreSQL adapter
-(pgx + sqlc + goose) behind the domain's `todo.Repository` port — implement that
-port to back the template with a different datastore.
+`mock-oidc` is a standalone, container-first **mock OIDC/OAuth2 authorization
+server for testing**. It issues real, cryptographically-verifiable tokens for
+arbitrary identities so a test suite can exercise a full sign-in flow against an
+unmodified OAuth2/OIDC client — no real identity provider required. It is a Go
+reimplementation of [navikt/mock-oauth2-server](https://github.com/navikt/mock-oauth2-server)
+built on chi + Huma, with a hexagonal architecture and a strong supply-chain
+baseline.
+
+!!! warning "For testing only"
+    mock-oidc mints signed tokens for any identity on request. It must never
+    front production traffic; the server logs this positioning banner on every
+    startup.
+
+## Project status
+
+The current tree is the walking skeleton (Slice 0): the transport, observability,
+CLI, and config boot in a container and serve only the infrastructure routes
+below. The OIDC domain is an empty, layering-gated hexagon; discovery, JWKS, and
+the token endpoints land in the following slices.
 
 ## Quick start
 
-The server persists to PostgreSQL, so running it needs a database. The fastest
-path is Docker Compose, which brings up the database, migrations, seed data, and
-the API together. The Compose stack also seeds dev-only mock API keys, because
-the todo routes are protected by the authorization tier (on by default):
+The server is DB-less and needs no configuration. Build and run it, or run the
+shipped container:
 
 ```sh
-mise run stack-up
+moon run root:build          # or: go build -o bin/mock-oidc ./cmd/mock-oidc
+./bin/mock-oidc serve        # serve is the default subcommand; listens on :8080
+curl -sS localhost:8080/isalive
 
-# Authorization is on: without a key, a protected route returns 401.
-curl -sS -o /dev/null -w '%{http_code}\n' localhost:8080/v1/todos   # => 401
-
-# Use the seeded dev user key (sent via the X-API-Key header):
-curl -sS -X POST localhost:8080/v1/todos \
-  -H 'X-API-Key: dev-user-key' \
-  -H 'content-type: application/json' \
-  -d '{"title":"buy milk"}'                                       # => 201
-curl -sS -H 'X-API-Key: dev-user-key' localhost:8080/v1/todos       # => 200, first page (keyset-paginated)
+# or the container:
+mise run image-local
+docker run --rm -p 8080:8080 -p 9090:9090 mock-oidc:dev
 ```
 
-`GET /v1/todos` is keyset-paginated — it returns at most `limit` todos (default
-20, max 100) plus an opaque `nextCursor`; pass that back as `?cursor=` for the
-next page. The bound applies even without `limit`, so one request can never pull
-the whole table.
-
-Resource routes are served under a `/v1` URL version prefix; the operational
-endpoints (`/healthz`, `/readyz`, `/metrics`, `/docs`, `/openapi.*`) are
-unversioned. See the README's [API versioning](https://github.com/meigma/template-go-api#api-versioning)
-section for how a later `/v2` is added.
-
-The stack seeds two mock keys: `dev-user-key` (role `user`, authorized for the
-todo actions) and `dev-admin-key` (role `admin`, authorized for everything).
-These are insecure, dev-only credentials — real deployments insert their own
-keys and never apply `hack/sql/`. The operational endpoints (`/healthz`,
-`/readyz`, `/metrics`) sit outside the authorization middleware and need no key.
-
-To build the binary and run it against your own PostgreSQL instead:
-
-```sh
-# start a throwaway PostgreSQL (or point at your own)
-docker run --rm -d -p 5432:5432 \
-  -e POSTGRES_USER=app -e POSTGRES_PASSWORD=app -e POSTGRES_DB=app postgres:17-alpine
-export TEMPLATE_GO_API_DATABASE_URL='postgres://app:app@localhost:5432/app?sslmode=disable'
-moon run root:build
-./bin/template-go-api migrate up   # create the schema (incl. the api_keys table)
-./bin/template-go-api serve        # listens on :8080
-```
-
-Running the binary directly applies the schema but not the `hack/sql/` seeds, so
-the `api_keys` table starts empty. Insert a key yourself — the table stores a
-SHA-256 hash, so write the digest into `key_hash`, e.g.
-`INSERT INTO api_keys (key_hash, subject, roles) VALUES (encode(sha256('my-key'::bytea), 'hex'), 'me', ARRAY['user'])`
-— or set `TEMPLATE_GO_API_AUTHZ_ENABLED=false` to bypass authorization while
-developing.
-
-See the [README](https://github.com/meigma/template-go-api#readme) for the full
-quickstart, configuration reference, the
-[Persistence](https://github.com/meigma/template-go-api#persistence) workflow
-(migrations, sqlc regeneration, integration tests, dynamic queries), the
-[Authorization](https://github.com/meigma/template-go-api#authorization) tier
-(Cedar policies, the deferred-authn seam, the modular slice pattern), and
-guidance on replacing the example resource.
+See the [README](https://github.com/meigma/mock-oidc#readme) for the full
+quickstart and the configuration reference.
 
 ## API reference
 
@@ -85,13 +52,14 @@ running server also serves interactive docs at `/docs` and the live spec at
 
 ## Operating notes
 
-- Liveness: `GET /healthz`
-- Readiness: `GET /readyz` (reports named per-check results; the PostgreSQL adapter adds a `postgres` connectivity check)
+- Liveness: `GET /isalive` (upstream-parity alias) and `GET /healthz`
+- Readiness: `GET /readyz` (reports named per-check results; empty and
+  unconditionally ready in the skeleton — the server is DB-less)
 - Metrics: `GET /metrics` on a dedicated listener (`--metrics-addr`, default `:9090`)
-- Migrations are explicit: `serve` never runs them; use the `migrate up|down|status` subcommand.
-- Authorization is deny-by-default and on by default (`--authz-enabled`, env `TEMPLATE_GO_API_AUTHZ_ENABLED`); the operational endpoints above are outside the authorization middleware. Set it `false` to bypass authorization entirely.
+- Configuration is via flags or `MOCK_OIDC_*` environment variables; the
+  server boots with zero configuration.
 
 ## Support and security
 
-- Issues and contributions: see [CONTRIBUTING.md](https://github.com/meigma/template-go-api/blob/master/CONTRIBUTING.md).
-- Security reports: see [SECURITY.md](https://github.com/meigma/template-go-api/blob/master/SECURITY.md).
+- Issues and contributions: see [CONTRIBUTING.md](https://github.com/meigma/mock-oidc/blob/master/CONTRIBUTING.md).
+- Security reports: see [SECURITY.md](https://github.com/meigma/mock-oidc/blob/master/SECURITY.md).

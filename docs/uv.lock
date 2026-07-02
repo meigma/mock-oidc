@@ -501,7 +501,7 @@ wheels = [
 ]
 
 [[package]]
-name = "template-go-api-docs"
+name = "mock-oidc-docs"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
