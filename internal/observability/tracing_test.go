@@ -13,7 +13,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/meigma/template-go-api/internal/observability"
+	"github.com/meigma/mock-oidc/internal/observability"
 )
 
 func TestNewTracerProviderDisabled(t *testing.T) {

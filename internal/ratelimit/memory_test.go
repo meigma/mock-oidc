@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"github.com/meigma/template-go-api/internal/ratelimit"
+	"github.com/meigma/mock-oidc/internal/ratelimit"
 )
 
 func TestInMemoryAllowsBurstThenDenies(t *testing.T) {

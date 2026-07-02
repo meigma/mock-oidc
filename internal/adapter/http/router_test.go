@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
-	"github.com/meigma/template-go-api/internal/observability"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/observability"
 )
 
 const testRequestTimeout = 5 * time.Second
@@ -41,7 +41,7 @@ func TestInfraRoutesWithoutResources(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	for _, path := range []string{"/healthz", "/readyz"} {
+	for _, path := range []string{"/isalive", "/healthz", "/readyz"} {
 		resp := get(t, srv, path)
 		assert.Equal(t, http.StatusOK, resp.status, path)
 	}
@@ -106,11 +106,12 @@ func TestTraceableRequest(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"/healthz":     false,
-		"/readyz":      false,
-		"/metrics":     false,
-		"/v1/todos":    true,
-		"/v1/todos/42": true,
+		"/isalive": false,
+		"/healthz": false,
+		"/readyz":  false,
+		"/metrics": false,
+		"/default/.well-known/openid-configuration": true,
+		"/default/token": true,
 	}
 	for path, want := range cases {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -253,7 +254,7 @@ func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
 
 	srv := corsTestServer(t, []string{"https://app.example"})
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodOptions, srv.URL+"/todos", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodOptions, srv.URL+"/default/token", nil)
 	require.NoError(t, err)
 	req.Header.Set("Origin", "https://app.example")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)

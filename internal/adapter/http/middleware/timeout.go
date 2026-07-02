@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
 )
 
 // Timeout returns middleware that bounds request processing to d. If the deadline

@@ -43,13 +43,12 @@ moon run root:build
 moon run root:test
 moon run docs:build              # build the docs site (renders the OpenAPI spec)
 
-mise run stack-up                # run the full API + PostgreSQL stack (Ctrl-C to stop)
-curl -sS localhost:8080/healthz  # smoke-test the running server (in another shell)
+mise run stack-up                # run the mock-oidc server via Docker Compose (Ctrl-C to stop)
+curl -sS localhost:8080/isalive  # smoke-test the running server (in another shell)
 ```
 
-The bare `./bin/template-go-api serve` needs a PostgreSQL database
-(`--database-url` is required); the Compose stack above wires one up. To run the
-binary against your own database, see the README's "Running with PostgreSQL".
+The server is DB-less and needs no configuration: `./bin/mock-oidc serve` boots
+and serves the infrastructure routes immediately.
 
 ## Release Changes
 

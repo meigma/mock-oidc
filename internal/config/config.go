@@ -1,5 +1,6 @@
-// Package config defines the API server's runtime configuration, loaded from
-// flags and TEMPLATE_GO_API_* environment variables via Viper.
+// Package config defines the mock-oidc server's runtime configuration, loaded
+// from flags and MOCK_OIDC_* environment variables (plus upstream-parity env
+// aliases) via Viper.
 package config
 
 import (
@@ -23,18 +24,10 @@ const (
 	defaultShutdownGrace     = 15 * time.Second
 	defaultLogLevel          = "info"
 	defaultLogFormat         = "json"
-	defaultDBMaxConns        = 0
-	// defaultAuthzEnabled is true: the todo routes now carry their authorization
-	// declarations and the engine merges the base policies with each slice's
-	// Contribution, so the deny-by-default middleware protects the API out of the
-	// box. Operators set it false as an escape hatch to bypass authorization
-	// entirely (incremental adoption or local debugging).
-	defaultAuthzEnabled = true
-	// defaultRateLimitEnabled is true: the API is rate limited out of the box
-	// (per client IP, pre-auth), a secure default that also shields the
-	// credential store from anonymous floods. Operators set it false to disable
-	// throttling entirely.
-	defaultRateLimitEnabled = true
+	// defaultRateLimitEnabled is false: a for-testing OIDC server is hammered by
+	// Testcontainers suites, so throttling legitimate test traffic is a parity
+	// defect. Opt in via config when wanted.
+	defaultRateLimitEnabled = false
 	// defaultRateLimitRPS is the sustained per-client request rate (requests per
 	// second). It is deliberately generous so local development and the demo
 	// stack are not throttled; tune it down for production.
@@ -78,25 +71,9 @@ type Config struct {
 	// read the client IP from. Empty (the default) trusts only the direct TCP
 	// peer, which cannot be spoofed.
 	TrustedProxyHeader string
-	// DatabaseURL is the PostgreSQL connection string. It is required: the
-	// template persists exclusively to PostgreSQL.
-	DatabaseURL string
-	// DBMaxConns caps the PostgreSQL connection pool size. Zero leaves the
-	// driver default in place.
-	DBMaxConns int32
-	// AuthzEnabled is the authorization master switch. It defaults to true now
-	// that the routes carry their authorization declarations: the deny-by-default
-	// middleware protects the API out of the box. When false the authz middleware
-	// is inert (pass-through), the escape hatch for incremental adoption or local
-	// debugging.
-	AuthzEnabled bool
-	// AuthzPolicyDir optionally loads .cedar policy files from a directory
-	// instead of the embedded set. Empty (the default) uses the embedded
-	// policies.
-	AuthzPolicyDir string
-	// RateLimitEnabled is the rate-limiting master switch. It defaults to true:
-	// the API is throttled per client IP before authentication runs. When false
-	// the rate-limit middleware is inert (pass-through).
+	// RateLimitEnabled is the rate-limiting master switch. It defaults to false:
+	// a for-testing OIDC server should not throttle Testcontainers traffic. When
+	// false the rate-limit middleware is inert (pass-through).
 	RateLimitEnabled bool
 	// RateLimitRPS is the sustained per-client request rate, in requests per
 	// second, when rate limiting is enabled.
@@ -133,22 +110,10 @@ func RegisterFlags(flags *pflag.FlagSet) {
 		"",
 		"proxy header to read the client IP from (for example X-Real-IP); empty trusts the TCP peer",
 	)
-	flags.String("database-url", "", "PostgreSQL connection URL (required)")
-	flags.Int32("db-max-conns", defaultDBMaxConns, "maximum PostgreSQL pool connections; 0 uses the driver default")
-	flags.Bool(
-		"authz-enabled",
-		defaultAuthzEnabled,
-		"enable the authorization middleware (deny-by-default); false bypasses it entirely",
-	)
-	flags.String(
-		"authz-policy-dir",
-		"",
-		"directory of .cedar policy files to load instead of the embedded policies; empty uses the embedded set",
-	)
 	flags.Bool(
 		"rate-limit-enabled",
 		defaultRateLimitEnabled,
-		"enable per-client (IP) rate limiting; false disables throttling entirely",
+		"enable per-client (IP) rate limiting; OFF by default for test traffic",
 	)
 	flags.Float64("rate-limit-rps", defaultRateLimitRPS, "sustained per-client request rate (requests per second)")
 	flags.Int("rate-limit-burst", defaultRateLimitBurst, "per-client burst size (token-bucket depth)")
@@ -176,10 +141,6 @@ func Load(vp *viper.Viper) Config {
 		LogFormat:          vp.GetString("log-format"),
 		CORSAllowedOrigins: vp.GetStringSlice("cors-allowed-origins"),
 		TrustedProxyHeader: vp.GetString("trusted-proxy-header"),
-		DatabaseURL:        vp.GetString("database-url"),
-		DBMaxConns:         vp.GetInt32("db-max-conns"),
-		AuthzEnabled:       vp.GetBool("authz-enabled"),
-		AuthzPolicyDir:     vp.GetString("authz-policy-dir"),
 		RateLimitEnabled:   vp.GetBool("rate-limit-enabled"),
 		RateLimitRPS:       vp.GetFloat64("rate-limit-rps"),
 		RateLimitBurst:     vp.GetInt("rate-limit-burst"),
@@ -203,9 +164,6 @@ func (c Config) Validate() error {
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("log-format must be %q or %q, got %q", "json", "text", c.LogFormat)
-	}
-	if strings.TrimSpace(c.DatabaseURL) == "" {
-		return errors.New("database-url is required")
 	}
 	if c.RateLimitEnabled {
 		if c.RateLimitRPS <= 0 {
@@ -232,10 +190,6 @@ func setDefaults(vp *viper.Viper) {
 	vp.SetDefault("log-format", defaultLogFormat)
 	vp.SetDefault("cors-allowed-origins", []string{})
 	vp.SetDefault("trusted-proxy-header", "")
-	vp.SetDefault("database-url", "")
-	vp.SetDefault("db-max-conns", defaultDBMaxConns)
-	vp.SetDefault("authz-enabled", defaultAuthzEnabled)
-	vp.SetDefault("authz-policy-dir", "")
 	vp.SetDefault("rate-limit-enabled", defaultRateLimitEnabled)
 	vp.SetDefault("rate-limit-rps", defaultRateLimitRPS)
 	vp.SetDefault("rate-limit-burst", defaultRateLimitBurst)

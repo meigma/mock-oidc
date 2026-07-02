@@ -25,7 +25,9 @@ func TestOpenAPICommandWritesFile(t *testing.T) {
 
 	content := string(data)
 	assert.Contains(t, content, "openapi: 3.0")
-	assert.Contains(t, content, "/v1/todos")
+	// The skeleton slice registers no OIDC operations yet; the document carries
+	// the renamed title and the injected version.
+	assert.Contains(t, content, "title: mock-oidc")
 	assert.Contains(t, content, "1.2.3")
 }
 

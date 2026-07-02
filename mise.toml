@@ -1,7 +1,7 @@
-# mise: tool + environment management for template-go-api.
+# mise: tool + environment management for mock-oidc.
 #
 # mise REPLACES Proto (the former .prototools + .moon/proto/*) and the bespoke
-# .moon/proto/sqlc.sha256 digest pin. The committed mise.lock records per-platform
+# per-tool digest pins. The committed mise.lock records per-platform
 # download URLs + checksums; for aqua-backed tools it additionally carries cosign /
 # SLSA / GitHub-attestation verification. `settings.locked` makes `mise install`
 # FAIL CLOSED when a tool lacks a pre-resolved URL for the current platform.
@@ -23,9 +23,7 @@ python = "3.14.3"
 # cosign/SLSA/GitHub-attestation recorded in mise.lock); they must never fall back
 # to a version-only backend (asdf/npm/cargo/pipx), which records no checksum.
 "aqua:golangci/golangci-lint" = "2.12.2"
-"aqua:sqlc-dev/sqlc"          = "1.31.1"
 "aqua:vektra/mockery"         = "3.7.1"
-"aqua:pressly/goose"          = "3.27.1"
 
 # Docs (MkDocs) toolchain — moved off moon's former unstable_python/unstable_uv.
 "aqua:astral-sh/uv" = "0.11.0"
@@ -45,8 +43,8 @@ GOTOOLCHAIN = "local"
 
 [settings]
 # Read/write mise.lock, and fail closed if a tool lacks a pre-resolved URL for the
-# current platform — replaces Proto's `checksum-url` + the .moon/proto/sqlc.sha256
-# pin, and extends integrity enforcement to every tool.
+# current platform — replaces Proto's `checksum-url` + the bespoke per-tool
+# digest pins, and extends integrity enforcement to every tool.
 lockfile = true
 locked = true
 
@@ -55,7 +53,7 @@ locked = true
 # equivalent. melange needs Linux, so `--runner docker` makes `image-local` work on
 # macOS too (Docker Desktop runs the Linux build container).
 [tasks.image-local]
-description = "Build the apko image for the host arch and load it into Docker as template-go-api:dev"
+description = "Build the apko image for the host arch and load it into Docker as mock-oidc:dev"
 run = '''
 set -euo pipefail
 arch="$(go env GOARCH)"
@@ -66,13 +64,13 @@ printf 'version: "dev"\ncommit: "%s"\ndate: "%s"\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .melange-vars.local.yaml
 melange build melange.yaml --arch "$arch" --signing-key melange.rsa --runner docker \
   --source-dir . --vars-file .melange-vars.local.yaml
-apko build apko.yaml template-go-api:dev image.tar --arch "$arch" --keyring-append ./melange.rsa.pub
+apko build apko.yaml mock-oidc:dev image.tar --arch "$arch" --keyring-append ./melange.rsa.pub
 docker load < image.tar
-docker tag "template-go-api:dev-$arch" template-go-api:dev
-echo "loaded template-go-api:dev (host arch $arch)"
+docker tag "mock-oidc:dev-$arch" mock-oidc:dev
+echo "loaded mock-oidc:dev (host arch $arch)"
 '''
 
 [tasks.stack-up]
-description = "Build the local apko image, then bring up the Postgres + API day-one stack"
+description = "Build the local apko image, then bring up the API day-one stack"
 depends = ["image-local"]
 run = "docker compose up"

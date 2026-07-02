@@ -22,39 +22,33 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, defaultRequestTimeout, cfg.RequestTimeout)
 	assert.Empty(t, cfg.CORSAllowedOrigins)
 	assert.Empty(t, cfg.TrustedProxyHeader)
-	assert.Empty(t, cfg.DatabaseURL)
-	assert.Zero(t, cfg.DBMaxConns)
-	assert.True(t, cfg.AuthzEnabled, "authz is enabled by default now that the routes are tagged")
-	assert.Empty(t, cfg.AuthzPolicyDir)
-	assert.True(t, cfg.RateLimitEnabled, "rate limiting is enabled by default")
+	assert.False(t, cfg.RateLimitEnabled, "rate limiting is disabled by default for test traffic")
 	assert.InDelta(t, defaultRateLimitRPS, cfg.RateLimitRPS, 0.0001)
 	assert.Equal(t, defaultRateLimitBurst, cfg.RateLimitBurst)
 	assert.False(t, cfg.TracingEnabled, "tracing is opt-in (needs an external collector)")
 }
 
-func TestLoadAuthzFromFlags(t *testing.T) {
+func TestLoadRateLimitFromFlags(t *testing.T) {
 	t.Parallel()
 
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(flags)
-	require.NoError(t, flags.Set("authz-enabled", "true"))
-	require.NoError(t, flags.Set("authz-policy-dir", "/etc/policies"))
+	require.NoError(t, flags.Set("rate-limit-enabled", "true"))
 
 	vp := viper.New()
 	require.NoError(t, vp.BindPFlags(flags))
 
 	cfg := Load(vp)
-	assert.True(t, cfg.AuthzEnabled)
-	assert.Equal(t, "/etc/policies", cfg.AuthzPolicyDir)
+	assert.True(t, cfg.RateLimitEnabled)
 }
 
 func TestLoadEnvOverride(t *testing.T) {
-	t.Setenv("TEMPLATE_GO_API_ADDR", ":9999")
-	t.Setenv("TEMPLATE_GO_API_LOG_LEVEL", "debug")
-	t.Setenv("TEMPLATE_GO_API_TRUSTED_PROXY_HEADER", "X-Real-IP")
+	t.Setenv("MOCK_OIDC_ADDR", ":9999")
+	t.Setenv("MOCK_OIDC_LOG_LEVEL", "debug")
+	t.Setenv("MOCK_OIDC_TRUSTED_PROXY_HEADER", "X-Real-IP")
 
 	vp := viper.New()
-	vp.SetEnvPrefix("TEMPLATE_GO_API")
+	vp.SetEnvPrefix("MOCK_OIDC")
 	vp.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	vp.AutomaticEnv()
 
@@ -86,7 +80,6 @@ func TestValidate(t *testing.T) {
 		RequestTimeout: time.Second,
 		ShutdownGrace:  time.Second,
 		LogFormat:      "json",
-		DatabaseURL:    "postgres://localhost:5432/app",
 	}
 	require.NoError(t, base.Validate())
 
@@ -105,10 +98,6 @@ func TestValidate(t *testing.T) {
 	negativeTimeout := base
 	negativeTimeout.RequestTimeout = -time.Second
 	require.Error(t, negativeTimeout.Validate())
-
-	missingDatabaseURL := base
-	missingDatabaseURL.DatabaseURL = ""
-	require.Error(t, missingDatabaseURL.Validate())
 
 	// Rate-limit settings are validated only when rate limiting is enabled.
 	rateLimited := base

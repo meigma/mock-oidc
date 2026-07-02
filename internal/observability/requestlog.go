@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/meigma/template-go-api/internal/logctx"
+	"github.com/meigma/mock-oidc/internal/logctx"
 )
 
 // LoggerFrom returns the request-scoped logger stored in ctx by RequestLogger.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/template-go-api/internal/app"
+	"github.com/meigma/mock-oidc/internal/app"
 )
 
 // openAPIFilePerm is the permission used when writing the spec to a file.

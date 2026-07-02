@@ -1,94 +1,17 @@
-# Day-one local stack: PostgreSQL + the API server, fully wired.
+# Day-one local stack: the mock-oidc API server.
 #
 #   mise run stack-up
-#   curl -sS -H 'X-API-Key: dev-user-key' localhost:8080/v1/todos   # the seeded todos (authz is on)
+#   curl -sS localhost:8080/isalive   # infra liveness route
 #
-# Startup is an ordered DAG, because migrations are explicit (the server never
-# runs them) and the seed data depends on the schema existing first:
-#
-#   postgres (healthy) -> migrate (schema) -> seed (hack/sql) -> api (serve)
-#
-# The database is ephemeral and reproducible: no volume is persisted, so every
-# `up` rebuilds a clean database, re-applies migrations, and re-applies all of
-# hack/sql. `docker compose down` discards it entirely.
-
-name: template-go-api
-
-# Prebaked connection string to the postgres service on the compose network.
-x-database-url: &database-url "postgres://app:app@postgres:5432/app?sslmode=disable"
-
-# Both the migrate one-shot and the api server run the same locally-built apko
-# image. Build + load it with `mise run image-local` (or `mise run stack-up`, which
+# The server is DB-less, so this is a single service. Build + load the locally
+# built apko image with `mise run image-local` (or `mise run stack-up`, which
 # builds the image and then runs `docker compose up`).
-x-app-image: &app-image
-  image: template-go-api:dev
+
+name: mock-oidc
 
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    ports:
-      - "5432:5432" # exposed for ad-hoc psql/inspection from the host
-    # No volume on purpose: the data dir lives in the container's writable layer
-    # and is discarded on `docker compose down`, keeping each run reproducible.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-      start_period: 5s
-
-  # One-shot: create the schema with the embedded goose migrations. Migrations
-  # are explicit (serve never runs them), so the stack applies them as a discrete
-  # step before anything reads or writes the database.
-  migrate:
-    <<: *app-image
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      TEMPLATE_GO_API_DATABASE_URL: *database-url
-    command: ["migrate", "up"]
-    restart: "no"
-
-  # One-shot: prepopulate the database by applying every *.sql under hack/sql in
-  # sorted filename order, after the schema exists. This is the drop-in seed hook
-  # — no migrations to touch and no setup code in the server. Uses psql from the
-  # postgres image; no-ops cleanly when hack/sql holds no .sql files.
-  seed:
-    image: postgres:17-alpine
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: *database-url
-    volumes:
-      - ./hack/sql:/sql:ro
-    entrypoint: ["/bin/sh", "-eu", "-c"]
-    command:
-      - |
-        applied=0
-        for f in /sql/*.sql; do
-          [ -e "$$f" ] || continue
-          echo "seed: applying $$f"
-          psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$$f"
-          applied=$$((applied + 1))
-        done
-        echo "seed: applied $$applied file(s)"
-    restart: "no"
-
   api:
-    <<: *app-image
-    depends_on:
-      postgres:
-        condition: service_healthy
-      seed:
-        condition: service_completed_successfully
-    environment:
-      TEMPLATE_GO_API_DATABASE_URL: *database-url
+    image: mock-oidc:dev
     ports:
       - "8080:8080" # API
       - "9090:9090" # /metrics (dedicated listener)

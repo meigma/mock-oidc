@@ -12,9 +12,9 @@ import (
 // TCP peer — so the limiter and the access log agree on who the client is.
 //
 // It has the signature of ratelimit.KeyFunc and is the default key for the
-// rate-limit middleware. To limit authenticated callers instead, swap in a key
-// function that reads the principal (see internal/authz) from the context;
-// keying lives here, in the transport, so the limiter core stays
+// rate-limit middleware. To key on a caller identity instead, swap in a key
+// function that reads that identity from the context; keying lives here, in the
+// transport, so the limiter core stays
 // router-agnostic. It never errors: an unresolved IP yields the empty key, which
 // simply shares one bucket rather than failing the request.
 func ClientIPKeyFunc(ctx huma.Context) (string, error) {

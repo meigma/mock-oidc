@@ -1,8 +1,8 @@
-site_name: template-go-api
-site_description: Meigma Go web API server template
-site_url: https://meigma.github.io/template-go-api/
-repo_name: meigma/template-go-api
-repo_url: https://github.com/meigma/template-go-api
+site_name: mock-oidc
+site_description: Standalone mock OIDC/OAuth2 authorization server for testing
+site_url: https://meigma.github.io/mock-oidc/
+repo_name: meigma/mock-oidc
+repo_url: https://github.com/meigma/mock-oidc
 edit_uri: edit/master/docs/docs/
 docs_dir: docs
 site_dir: build

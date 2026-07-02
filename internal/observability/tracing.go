@@ -29,8 +29,8 @@ type TracingConfig struct {
 // NewTracerProvider configures OpenTelemetry tracing and registers it globally,
 // returning a shutdown function that flushes buffered spans. When cfg.Enabled is
 // false it installs nothing — the global no-op tracer provider stays in place —
-// and returns a nil shutdown, so instrumentation such as otelhttp and otelpgx
-// adds no overhead. Callers must nil-check the returned shutdown.
+// and returns a nil shutdown, so instrumentation such as otelhttp adds no
+// overhead. Callers must nil-check the returned shutdown.
 //
 // The exporter is OTLP/HTTP, configured entirely from the standard OTEL_*
 // environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS,

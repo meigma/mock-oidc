@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
 
           version="0.0.0-dryrun.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          binary_name="template-go-api"
+          binary_name="mock-oidc"
           asset_prefix="${binary_name}_"
           expected_signer="${GITHUB_REPOSITORY}/.github/workflows/attest.yml"
           actual_signer="$(awk -F'"' '/signer_workflow/ { print $2; exit }' ghd.toml)"
@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
 
           version="0.0.0-dryrun.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          binary_name="template-go-api"
+          binary_name="mock-oidc"
           host_os="$(go env GOHOSTOS)"
           host_arch="$(go env GOHOSTARCH)"
           expected="${binary_name}_${version}_${host_os}_${host_arch}"
@@ -242,13 +242,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          apko build apko.yaml template-go-api:dry-run image.tar \
+          apko build apko.yaml mock-oidc:dry-run image.tar \
             --arch amd64 \
             --keyring-append ./melange-amd64.rsa.pub \
             --keyring-append ./melange-arm64.rsa.pub
 
           docker load < image.tar
-          docker tag template-go-api:dry-run-amd64 template-go-api:dry-run
+          docker tag mock-oidc:dry-run-amd64 mock-oidc:dry-run
 
-          docker run --rm template-go-api:dry-run --version
-          docker run --rm template-go-api:dry-run openapi | grep -Fq "openapi: 3.0.3"
+          docker run --rm mock-oidc:dry-run --version
+          docker run --rm mock-oidc:dry-run openapi | grep -Fq "openapi: 3.0.3"

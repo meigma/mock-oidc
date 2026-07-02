@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/time/rate"
 
-	"github.com/meigma/template-go-api/internal/ratelimit"
+	"github.com/meigma/mock-oidc/internal/ratelimit"
 )
 
 // testClientHeader names the header the test key function reads to identify the

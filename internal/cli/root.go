@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/meigma/template-go-api/internal/config"
+	"github.com/meigma/mock-oidc/internal/config"
 )
 
 // BuildInfo describes linker-injected build metadata printed by --version.
@@ -35,8 +35,8 @@ type Options struct {
 	Viper *viper.Viper
 }
 
-// NewRootCommand creates the template-go-api Cobra command tree. The root runs
-// the HTTP server (the same as the serve subcommand) when invoked with no
+// NewRootCommand creates the mock-oidc Cobra command tree. The root runs the
+// HTTP server (the same as the serve subcommand) when invoked with no
 // subcommand.
 func NewRootCommand(options Options) *cobra.Command {
 	if options.In == nil {
@@ -54,9 +54,9 @@ func NewRootCommand(options Options) *cobra.Command {
 	options.Build = options.Build.withDefaults()
 
 	root := &cobra.Command{
-		Use:           "template-go-api",
-		Short:         "Meigma Go web API server template",
-		Long:          "template-go-api runs a small HTTP API server built on chi and Huma.",
+		Use:           "mock-oidc",
+		Short:         "Mock OAuth2/OIDC authorization server for testing",
+		Long:          "mock-oidc runs a for-testing-only OIDC server that mints real, signed JWTs.",
 		Version:       options.Build.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -75,7 +75,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.AddCommand(newServeCommand(options))
 	root.AddCommand(newVersionCommand(options))
 	root.AddCommand(newOpenAPICommand(options))
-	root.AddCommand(newMigrateCommand(options))
+	// newMigrateCommand removed: mock-oidc has no database.
 
 	return root
 }
@@ -83,7 +83,7 @@ func NewRootCommand(options Options) *cobra.Command {
 // versionLine formats the single-line build metadata used by both the
 // --version flag and the version subcommand.
 func versionLine(build BuildInfo) string {
-	return fmt.Sprintf("template-go-api %s (%s) built %s", build.Version, build.Commit, build.Date)
+	return fmt.Sprintf("mock-oidc %s (%s) built %s", build.Version, build.Commit, build.Date)
 }
 
 func (b BuildInfo) withDefaults() BuildInfo {
@@ -101,9 +101,25 @@ func (b BuildInfo) withDefaults() BuildInfo {
 }
 
 func initializeConfig(cmd *cobra.Command, vp *viper.Viper) error {
-	vp.SetEnvPrefix("TEMPLATE_GO_API")
+	vp.SetEnvPrefix("MOCK_OIDC")
 	vp.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	vp.AutomaticEnv()
+
+	// Upstream-parity env aliases (Contract §1). AutomaticEnv only matches the
+	// prefixed MOCK_OIDC_* form, so each bare upstream name is bound explicitly.
+	// BindEnv checks its names in order and the first set wins, so listing the
+	// prefixed name first keeps the meigma-native variable authoritative while the
+	// bare upstream name stays a working alias. The port precedence is therefore
+	// MOCK_OIDC_SERVER_PORT > SERVER_PORT > PORT > 8080. The server-hostname/
+	// server-port and json-config keys are consumed by the Slice 1 process-config
+	// and OIDC-seed layers; binding them here keeps the alias surface stable.
+	_ = vp.BindEnv("server-hostname", "MOCK_OIDC_SERVER_HOSTNAME", "SERVER_HOSTNAME")
+	_ = vp.BindEnv("server-port", "MOCK_OIDC_SERVER_PORT", "SERVER_PORT", "PORT")
+	_ = vp.BindEnv("log-level", "MOCK_OIDC_LOG_LEVEL", "LOG_LEVEL")
+	_ = vp.BindEnv("json-config", "MOCK_OIDC_JSON_CONFIG", "JSON_CONFIG")
+	_ = vp.BindEnv("json-config-path", "MOCK_OIDC_JSON_CONFIG_PATH", "JSON_CONFIG_PATH")
+	// LOGBACK_CONFIG is a JVM/Logback concept with no Go analog: accepted and
+	// ignored as a no-op alias. It is intentionally not bound.
 
 	if err := vp.BindPFlags(cmd.Root().PersistentFlags()); err != nil {
 		return fmt.Errorf("bind persistent flags: %w", err)

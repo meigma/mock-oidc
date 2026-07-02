@@ -1,4 +1,4 @@
-# Builds the template-go-api binary into a signed Wolfi apk; apko.yaml assembles it
+# Builds the mock-oidc binary into a signed Wolfi apk; apko.yaml assembles it
 # into the minimal multi-arch runtime image. version/commit/date are stamped into the
 # binary via -ldflags, mirroring GoReleaser and the former Dockerfile.
 #
@@ -6,7 +6,7 @@
 # The build-time version/commit/date are injected via --vars-file (see the release
 # workflow and the `image-local` mise task), so no date math runs inside the sandbox.
 package:
-  name: template-go-api
+  name: mock-oidc
   version: "1.0.4" # x-release-please-version
   epoch: 0
   description: Meigma Go web API server template
@@ -33,8 +33,8 @@ pipeline:
   # assets (SQL migrations + Cedar policies) compile in from the mounted source.
   - uses: go/build
     with:
-      packages: ./cmd/template-go-api
-      output: template-go-api
+      packages: ./cmd/mock-oidc
+      output: mock-oidc
       go-package: go-1.26
       modroot: .
       strip: "-s -w"
