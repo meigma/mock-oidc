@@ -53,6 +53,31 @@ type IssuerRegistry interface {
 	Known(ctx context.Context) ([]IssuerID, error)
 }
 
+// CodeStore is the single-use cache for authorization codes. Save stores the
+// CodeRecord snapshot under a freshly minted code; Take atomically returns AND
+// removes it, so a code redeems exactly once — the removal happens before the
+// PKCE check, so a failed exchange still burns the code (catalog). A miss is a
+// sentinel the token service maps to invalid_grant "unknown or already-used
+// authorization code". Implementations must be concurrency-safe.
+type CodeStore interface {
+	// Save stores a single-use record under code.
+	Save(ctx context.Context, code AuthorizationCode, rec CodeRecord) error
+	// Take atomically returns and removes the record for code; a miss returns a
+	// non-nil error.
+	Take(ctx context.Context, code AuthorizationCode) (CodeRecord, error)
+}
+
+// RefreshTokenStore persists issued refresh tokens for later redemption. Slice 2
+// only SAVES a RefreshRecord under a freshly minted refresh token so the
+// authorization_code exchange can return it; redemption (lookup, rotation, and
+// the cross-issuer check) lands in Slice 3. Implementations must be
+// concurrency-safe.
+type RefreshTokenStore interface {
+	// Save stores rec under token, overwriting any prior record for the same
+	// token.
+	Save(ctx context.Context, token RefreshToken, rec RefreshRecord) error
+}
+
 // issuerResolver assembles the per-request Issuer aggregate from the registry
 // (identity + configured callbacks), the key store (public key), and the
 // proxy-aware base URL. It is a domain-internal collaborator — not a port, not a

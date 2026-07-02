@@ -103,8 +103,13 @@ func (p *Provider) PublicKeys(_ context.Context, id oidc.IssuerID) (oidc.JWKS, e
 	return oidc.JWKS{Keys: []oidc.JWK{key.meta.Public}}, nil
 }
 
-// Sign serializes and signs tok for issuer id, returning the compact JWS.
+// Sign serializes and signs tok for issuer id, returning the compact JWS. An
+// alg=none token is emitted as an RFC 7519 unsecured JWT (empty signature),
+// needing no issuer key — the nonce-bearing refresh-token wire form.
 func (p *Provider) Sign(_ context.Context, id oidc.IssuerID, tok oidc.Token) (oidc.SignedToken, error) {
+	if tok.Header.Algorithm == oidc.AlgNone {
+		return signUnsecured(tok)
+	}
 	key, err := p.keyFor(id)
 	if err != nil {
 		return "", err
@@ -213,6 +218,32 @@ func sign(priv keyMaterial, tok oidc.Token) (oidc.SignedToken, error) {
 		return "", err
 	}
 	return oidc.SignedToken(signingInput + "." + encodeSegment(sig)), nil
+}
+
+// signUnsecured emits an RFC 7519 unsecured (alg=none) compact JWT: the header
+// and payload base64url segments followed by an EMPTY signature (trailing dot).
+// It is used only for the nonce-bearing refresh-token accommodation, so its
+// payload carries just the jti and nonce — no key, no signature, no timestamps.
+func signUnsecured(tok oidc.Token) (oidc.SignedToken, error) {
+	headerJSON, err := json.Marshal(map[string]string{
+		"alg": string(oidc.AlgNone),
+		"typ": string(tok.Header.Type),
+	})
+	if err != nil {
+		return "", fmt.Errorf("signing: marshal unsecured header: %w", err)
+	}
+	payload := make(map[string]any)
+	if tok.Claims.JWTID != "" {
+		payload["jti"] = tok.Claims.JWTID
+	}
+	if tok.Claims.Nonce != nil {
+		payload["nonce"] = string(*tok.Claims.Nonce)
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("signing: marshal unsecured claims: %w", err)
+	}
+	return oidc.SignedToken(encodeSegment(headerJSON) + "." + encodeSegment(payloadJSON) + "."), nil
 }
 
 // marshalClaims renders a ClaimSet as the JWT payload. This is the adapter edge,

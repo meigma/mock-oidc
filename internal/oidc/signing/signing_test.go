@@ -93,6 +93,7 @@ func verifyJWS(t *testing.T, alg oidc.SigningAlgorithm, jwk oidc.JWK, compact st
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	require.NoError(t, err)
 
+	//nolint:exhaustive // verifyJWS is only called for the producible RS*/PS*/ES* families; alg=none is not a signature.
 	switch alg {
 	case oidc.RS256:
 		verifyPKCS1(t, jwk, crypto.SHA256, input, sig)
@@ -237,6 +238,39 @@ func TestProviderSignsVerifiableRS256(t *testing.T) {
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	require.NoError(t, err)
 	require.NoError(t, rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig))
+}
+
+// TestProviderSignsUnsecuredNone covers the alg=none refresh-token wire form: an
+// RFC 7519 unsecured JWT with an empty signature and a payload of only jti +
+// nonce, needing no issuer key.
+func TestProviderSignsUnsecuredNone(t *testing.T) {
+	t.Parallel()
+
+	p, err := signing.NewProvider(oidc.RS256, nil)
+	require.NoError(t, err)
+
+	nonce := oidc.Nonce("n-xyz")
+	claims := oidc.ClaimSet{JWTID: "rt-jti", Nonce: &nonce}
+	tok := oidc.NewToken(oidc.IssuerID("default"), oidc.AlgNone, oidc.DefaultJOSEType, claims)
+
+	signed, err := p.Sign(context.Background(), "default", tok)
+	require.NoError(t, err)
+
+	parts := strings.Split(string(signed), ".")
+	require.Len(t, parts, 3, "unsecured JWT is header.payload. with an empty signature")
+	assert.Empty(t, parts[2], "the signature segment is empty")
+
+	header := decodeJSON(t, parts[0])
+	assert.Equal(t, "none", header["alg"])
+	assert.Equal(t, "JWT", header["typ"])
+	_, hasKid := header["kid"]
+	assert.False(t, hasKid, "an unsecured token carries no kid")
+
+	payload := decodeJSON(t, parts[1])
+	assert.Equal(t, "rt-jti", payload["jti"])
+	assert.Equal(t, "n-xyz", payload["nonce"])
+	_, hasIat := payload["iat"]
+	assert.False(t, hasIat, "the refresh PlainJWT carries no timestamps")
 }
 
 // TestProviderKeysAreStableAndPerIssuer verifies the deterministic keying

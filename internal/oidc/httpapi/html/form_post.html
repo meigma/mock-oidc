@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Continue</title>
+</head>
+<body onload="document.forms[0].submit()">
+  <noscript>
+    <p>JavaScript is disabled; submit the form to continue.</p>
+  </noscript>
+  <form method="post" action="{{.RedirectURI}}">
+    <input type="hidden" name="code" value="{{.Code}}">
+    {{- if .State}}
+    <input type="hidden" name="state" value="{{.State}}">
+    {{- end}}
+    <noscript><button type="submit">Continue</button></noscript>
+  </form>
+</body>
+</html>
