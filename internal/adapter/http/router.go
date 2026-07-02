@@ -11,9 +11,9 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/middleware"
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
-	"github.com/meigma/template-go-api/internal/observability"
+	"github.com/meigma/mock-oidc/internal/adapter/http/middleware"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/observability"
 )
 
 // Infrastructure route paths. They are raw chi routes outside the Huma API and

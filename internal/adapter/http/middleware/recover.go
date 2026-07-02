@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
-	"github.com/meigma/template-go-api/internal/logctx"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/logctx"
 )
 
 // Recoverer returns middleware that converts a panic into an RFC 9457 500

@@ -3,8 +3,8 @@ layer: 'application'
 stack: 'backend'
 
 project:
-  title: 'template-go-api'
-  description: 'Meigma Go web API server template.'
+  title: 'mock-oidc'
+  description: 'Mock OIDC/OAuth2 server for testing.'
   owner: 'meigma'
   maintainers:
     - 'meigma'
@@ -25,22 +25,11 @@ fileGroups:
     # tool) in mise must invalidate the cacheable build/openapi tasks.
     - 'mise.toml'
     - 'mise.lock'
-  # Inputs that drive sqlc code generation: the config plus the SQL schema
-  # (goose migrations, which sqlc reads as its schema) and hand-written queries.
-  sqlcSources:
-    - 'sqlc.yaml'
-    - 'internal/adapter/postgres/migrations/*.sql'
-    - 'internal/todo/postgres/queries/*.sql'
-    - 'mise.toml'
-    - 'mise.lock'
   # Inputs that drive mockery code generation: the config plus the source files
-  # declaring the mocked interfaces (the outbound ports).
+  # declaring the mocked interfaces (the outbound ports). No OIDC ports exist yet
+  # in the skeleton, so only the config and tool pins are inputs for now.
   mockerySources:
     - '.mockery.yaml'
-    - 'internal/todo/ports.go'
-    - 'internal/authz/authn.go'
-    - 'internal/authz/contribution.go'
-    - 'internal/authz/apikey/apikey.go'
     - 'mise.toml'
     - 'mise.lock'
   lintConfig:
@@ -76,11 +65,11 @@ tasks:
       cache: false
 
   build:
-    command: 'go build -o bin/template-go-api ./cmd/template-go-api'
+    command: 'go build -o bin/mock-oidc ./cmd/mock-oidc'
     inputs:
       - '@group(goSources)'
     outputs:
-      - 'bin/template-go-api'
+      - 'bin/mock-oidc'
 
   test:
     command: 'go test ./...'
@@ -92,7 +81,7 @@ tasks:
   # Regenerate the committed OpenAPI spec from the server code. Run after
   # changing the API; docs:build renders the committed result.
   openapi:
-    command: 'go run ./cmd/template-go-api openapi --output docs/docs/openapi.yaml'
+    command: 'go run ./cmd/mock-oidc openapi --output docs/docs/openapi.yaml'
     inputs:
       - '@group(goSources)'
     outputs:
@@ -102,85 +91,48 @@ tasks:
   # committed spec, so the spec can never fall out of sync with the code. Writes
   # no tracked file, so it never races docs:build reading the committed spec.
   openapi-check:
-    script: 'tmp="$(mktemp)" && go run ./cmd/template-go-api openapi --output "$tmp" && git diff --no-index --exit-code -- docs/docs/openapi.yaml "$tmp"'
+    script: 'tmp="$(mktemp)" && go run ./cmd/mock-oidc openapi --output "$tmp" && git diff --no-index --exit-code -- docs/docs/openapi.yaml "$tmp"'
     inputs:
       - '@group(goSources)'
       - 'docs/docs/openapi.yaml'
     options:
       cache: false
 
-  # Regenerate the committed sqlc layer from the schema and queries. Run after
-  # changing migrations/*.sql or queries/*.sql, then commit the result. Tool
-  # integrity is enforced by mise.lock (`settings.locked`), which replaced the
-  # former bespoke sqlc-verify task + .moon/proto/sqlc.sha256 pin.
-  sqlc:
-    command: 'sqlc generate'
-    inputs:
-      - '@group(sqlcSources)'
-    outputs:
-      - 'internal/todo/postgres/sqlc/*.go'
-    options:
-      cache: false
-
-  # Drift-guard: regenerate into a throwaway directory and fail if it differs
-  # from the committed sqlc package, so the generated code can never fall out of
-  # sync with the schema/queries. sqlc resolves `out` relative to the config
-  # directory, so the temp dir lives under the repo root and is cleaned up on
-  # exit. Writes no tracked file.
-  sqlc-check:
-    script: |
-      set -eu
-      tmp="$(mktemp -d "${PWD}/.sqlc-check.XXXXXX")"
-      cfg="${tmp}.yaml"
-      trap 'rm -rf "$tmp" "$cfg"' EXIT
-      sed "s|out: internal/todo/postgres/sqlc|out: ${tmp#"${PWD}/"}|" sqlc.yaml > "$cfg"
-      sqlc generate -f "$cfg"
-      git diff --no-index --exit-code -- internal/todo/postgres/sqlc "$tmp"
-    inputs:
-      - '@group(sqlcSources)'
-      - 'internal/todo/postgres/sqlc/*.go'
-    options:
-      cache: false
-
   # Regenerate the committed testify mocks from the outbound ports. Run after
-  # changing a mocked interface, then commit the result.
+  # changing a mocked interface, then commit the result. The OIDC hexagon has no
+  # ports yet (empty `.mockery.yaml` `packages:`), so this currently generates
+  # nothing; later slices repoint it at `internal/oidc` ports.
   mockery:
     command: 'mockery'
     inputs:
       - '@group(mockerySources)'
-    outputs:
-      - 'internal/todo/mocks/*.go'
-      - 'internal/authz/mocks/*.go'
-      - 'internal/authz/apikey/mocks/*.go'
     options:
       cache: false
 
   # Drift-guard: regenerate the mocks into a throwaway directory and fail if they
   # differ from the committed package, so the generated code can never fall out of
-  # sync with the interfaces. mockery resolves `dir` relative to the working
-  # directory, so the temp dir lives under the repo root and is cleaned up on
-  # exit. Writes no tracked file.
+  # sync with the interfaces. With an empty `packages:` there are no committed
+  # mocks to diff, so this passes trivially until Slice 1 adds OIDC ports.
   mockery-check:
     script: |
       set -eu
       tmp="$(mktemp -d "${PWD}/.mockery-check.XXXXXX")"
       cfg="${tmp}.yaml"
       trap 'rm -rf "$tmp" "$cfg"' EXIT
-      # Regenerate every mock into one throwaway directory (filenames are unique
-      # across the mocked interfaces), then compare each committed mocks package
-      # against the freshly generated files of the same name.
       sed "s|dir: \"{{.InterfaceDir}}/mocks\"|dir: ${tmp#"${PWD}/"}|" .mockery.yaml > "$cfg"
       mockery --config "$cfg"
-      for dir in internal/todo/mocks internal/authz/mocks internal/authz/apikey/mocks; do
+      # Compare every committed mocks package against the freshly generated files
+      # of the same name. No `internal/oidc/mocks` exists yet, so the loop is a
+      # no-op in the skeleton.
+      for dir in internal/oidc/mocks; do
+        [ -d "$dir" ] || continue
         for committed in "$dir"/*.go; do
           git diff --no-index --exit-code -- "$committed" "$tmp/$(basename "$committed")"
         done
       done
     inputs:
       - '@group(mockerySources)'
-      - 'internal/todo/mocks/*.go'
-      - 'internal/authz/mocks/*.go'
-      - 'internal/authz/apikey/mocks/*.go'
+      - 'internal/oidc/mocks/*.go'
     options:
       cache: false
 
@@ -198,19 +150,6 @@ tasks:
       cache: false
       runInCI: true
 
-  # Run the embedded database migrations for local development. Pass the goose
-  # verb and connection URL through, for example:
-  #   moon run root:migrate -- up --database-url postgres://localhost:5432/app
-  # Migrations are explicit and never run automatically by serve.
-  migrate:
-    command: 'go run ./cmd/template-go-api migrate'
-    inputs:
-      - '@group(goSources)'
-      - 'internal/adapter/postgres/migrations/*.sql'
-    options:
-      cache: false
-      runInCI: false
-
   check:
     deps:
       - 'root:format'
@@ -218,7 +157,6 @@ tasks:
       - 'root:build'
       - 'root:test'
       - 'root:openapi-check'
-      - 'root:sqlc-check'
       - 'root:mockery-check'
       - 'docs:build'
     inputs:

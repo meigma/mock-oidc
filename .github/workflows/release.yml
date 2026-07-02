@@ -20,7 +20,7 @@ on:
 permissions: {}
 
 env:
-  IMAGE_NAME: ghcr.io/meigma/template-go-api
+  IMAGE_NAME: ghcr.io/meigma/mock-oidc
 
 jobs:
   resolve-release:
@@ -121,7 +121,7 @@ jobs:
           set -euo pipefail
 
           version="${RELEASE_TAG#v}"
-          binary_name="template-go-api"
+          binary_name="mock-oidc"
           host_os="$(go env GOHOSTOS)"
           host_arch="$(go env GOHOSTARCH)"
           bin="dist/release-assets/${binary_name}_${version}_${host_os}_${host_arch}"
@@ -425,9 +425,9 @@ jobs:
             echo
             echo '```sh'
             echo "gh release view $RELEASE_TAG --repo $GITHUB_REPOSITORY --json isDraft,assets"
-            echo "asset=\"template-go-api_${RELEASE_VERSION}_\$(go env GOOS)_\$(go env GOARCH)\""
+            echo "asset=\"mock-oidc_${RELEASE_VERSION}_\$(go env GOOS)_\$(go env GOARCH)\""
             echo "gh attestation verify \"dist/release-assets/\${asset}\" --repo \"$GITHUB_REPOSITORY\" --signer-workflow \"$GITHUB_REPOSITORY/.github/workflows/attest.yml\" --source-ref \"refs/tags/$RELEASE_TAG\" --deny-self-hosted-runners"
-            echo "ghd download \"$GITHUB_REPOSITORY/template-go-api@${RELEASE_VERSION}\" --output \"\$(mktemp -d)\""
+            echo "ghd download \"$GITHUB_REPOSITORY/mock-oidc@${RELEASE_VERSION}\" --output \"\$(mktemp -d)\""
             echo '```'
             echo
             echo "Container verification commands:"

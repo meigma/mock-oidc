@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/middleware"
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/adapter/http/middleware"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
 )
 
 // TestRecovererReturnsProblemJSON verifies a panic becomes an RFC 9457 500.

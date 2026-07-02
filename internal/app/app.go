@@ -15,17 +15,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
-	adapterhttp "github.com/meigma/template-go-api/internal/adapter/http"
-	"github.com/meigma/template-go-api/internal/adapter/postgres"
-	"github.com/meigma/template-go-api/internal/authz"
-	"github.com/meigma/template-go-api/internal/authz/apikey"
-	"github.com/meigma/template-go-api/internal/config"
-	"github.com/meigma/template-go-api/internal/observability"
-	"github.com/meigma/template-go-api/internal/ratelimit"
-	"github.com/meigma/template-go-api/internal/todo"
-	todoauthz "github.com/meigma/template-go-api/internal/todo/authz"
-	"github.com/meigma/template-go-api/internal/todo/httpapi"
-	todopostgres "github.com/meigma/template-go-api/internal/todo/postgres"
+	adapterhttp "github.com/meigma/mock-oidc/internal/adapter/http"
+	"github.com/meigma/mock-oidc/internal/adapter/postgres"
+	"github.com/meigma/mock-oidc/internal/authz"
+	"github.com/meigma/mock-oidc/internal/authz/apikey"
+	"github.com/meigma/mock-oidc/internal/config"
+	"github.com/meigma/mock-oidc/internal/observability"
+	"github.com/meigma/mock-oidc/internal/ratelimit"
+	"github.com/meigma/mock-oidc/internal/todo"
+	todoauthz "github.com/meigma/mock-oidc/internal/todo/authz"
+	"github.com/meigma/mock-oidc/internal/todo/httpapi"
+	todopostgres "github.com/meigma/mock-oidc/internal/todo/postgres"
 )
 
 // rateLimiterIdleTTL is how long an idle per-client bucket is kept before the

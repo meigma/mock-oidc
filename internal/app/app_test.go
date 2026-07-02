@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/template-go-api/internal/app"
-	"github.com/meigma/template-go-api/internal/authz"
-	"github.com/meigma/template-go-api/internal/config"
-	"github.com/meigma/template-go-api/internal/observability"
-	"github.com/meigma/template-go-api/internal/todo/todotest"
+	"github.com/meigma/mock-oidc/internal/app"
+	"github.com/meigma/mock-oidc/internal/authz"
+	"github.com/meigma/mock-oidc/internal/config"
+	"github.com/meigma/mock-oidc/internal/observability"
+	"github.com/meigma/mock-oidc/internal/todo/todotest"
 )
 
 // stubAuthenticator authenticates every request as a fixed principal carrying

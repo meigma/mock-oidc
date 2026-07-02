@@ -1,4 +1,4 @@
-# mise: tool + environment management for template-go-api.
+# mise: tool + environment management for mock-oidc.
 #
 # mise REPLACES Proto (the former .prototools + .moon/proto/*) and the bespoke
 # .moon/proto/sqlc.sha256 digest pin. The committed mise.lock records per-platform
@@ -55,7 +55,7 @@ locked = true
 # equivalent. melange needs Linux, so `--runner docker` makes `image-local` work on
 # macOS too (Docker Desktop runs the Linux build container).
 [tasks.image-local]
-description = "Build the apko image for the host arch and load it into Docker as template-go-api:dev"
+description = "Build the apko image for the host arch and load it into Docker as mock-oidc:dev"
 run = '''
 set -euo pipefail
 arch="$(go env GOARCH)"
@@ -66,13 +66,13 @@ printf 'version: "dev"\ncommit: "%s"\ndate: "%s"\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .melange-vars.local.yaml
 melange build melange.yaml --arch "$arch" --signing-key melange.rsa --runner docker \
   --source-dir . --vars-file .melange-vars.local.yaml
-apko build apko.yaml template-go-api:dev image.tar --arch "$arch" --keyring-append ./melange.rsa.pub
+apko build apko.yaml mock-oidc:dev image.tar --arch "$arch" --keyring-append ./melange.rsa.pub
 docker load < image.tar
-docker tag "template-go-api:dev-$arch" template-go-api:dev
-echo "loaded template-go-api:dev (host arch $arch)"
+docker tag "mock-oidc:dev-$arch" mock-oidc:dev
+echo "loaded mock-oidc:dev (host arch $arch)"
 '''
 
 [tasks.stack-up]
-description = "Build the local apko image, then bring up the Postgres + API day-one stack"
+description = "Build the local apko image, then bring up the API day-one stack"
 depends = ["image-local"]
 run = "docker compose up"

@@ -1,5 +1,5 @@
 # Minimal, multi-arch, nonroot runtime image assembled from the locally-built
-# template-go-api apk (melange.yaml) plus the Wolfi base packages. Mirrors the
+# mock-oidc apk (melange.yaml) plus the Wolfi base packages. Mirrors the
 # former gcr.io/distroless/static-debian12:nonroot posture (uid 65532, ca-certs,
 # tzdata, no shell). The Wolfi base intentionally floats to the latest (fresh CA
 # bundle/timezones, low CVE surface); the exact resolved versions are recorded in
@@ -16,10 +16,10 @@ contents:
     - wolfi-baselayout
     - ca-certificates-bundle
     - tzdata
-    - template-go-api@local
+    - mock-oidc@local
 
 entrypoint:
-  command: /usr/bin/template-go-api
+  command: /usr/bin/mock-oidc
 
 # Create the nonroot user/group (uid/gid 65532) and run as it — Wolfi has no
 # `nonroot` package; the user is defined here, mirroring distroless:nonroot.
@@ -38,7 +38,7 @@ archs:
   - arm64
 
 annotations:
-  org.opencontainers.image.title: template-go-api
+  org.opencontainers.image.title: mock-oidc
   org.opencontainers.image.description: Meigma Go web API server template
-  org.opencontainers.image.source: https://github.com/meigma/template-go-api
+  org.opencontainers.image.source: https://github.com/meigma/mock-oidc
   org.opencontainers.image.version: "1.0.4" # x-release-please-version

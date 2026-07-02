@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/meigma/template-go-api/internal/config"
+	"github.com/meigma/mock-oidc/internal/config"
 )
 
 // BuildInfo describes linker-injected build metadata printed by --version.

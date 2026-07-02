@@ -9,7 +9,7 @@
   "bump-patch-for-minor-pre-major": true,
   "packages": {
     ".": {
-      "package-name": "template-go-api",
+      "package-name": "mock-oidc",
       "changelog-path": "CHANGELOG.md",
       "extra-files": ["melange.yaml", "apko.yaml"]
     }

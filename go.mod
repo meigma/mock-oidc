@@ -1,4 +1,4 @@
-module github.com/meigma/template-go-api
+module github.com/meigma/mock-oidc
 
 go 1.26.4
 

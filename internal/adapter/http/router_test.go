@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/template-go-api/internal/adapter/http/problem"
-	"github.com/meigma/template-go-api/internal/observability"
+	"github.com/meigma/mock-oidc/internal/adapter/http/problem"
+	"github.com/meigma/mock-oidc/internal/observability"
 )
 
 const testRequestTimeout = 5 * time.Second

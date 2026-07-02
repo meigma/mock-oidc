@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/meigma/template-go-api/internal/cli"
+	"github.com/meigma/mock-oidc/internal/cli"
 )
 
 //nolint:gochecknoglobals // GoReleaser injects these values with ldflags during releases.
