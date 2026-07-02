@@ -17,4 +17,10 @@ filename: "mock_{{.InterfaceName}}.go"
 pkgname: "mocks"
 structname: "{{.InterfaceName}}"
 force-file-write: true
-packages: {}
+packages:
+  github.com/meigma/mock-oidc/internal/oidc:
+    interfaces:
+      Clock:
+      KeyStore:
+      Signer:
+      IssuerRegistry:
