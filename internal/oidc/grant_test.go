@@ -47,20 +47,24 @@ func TestGrantTokenMatrix(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		grant   oidc.GrantType
-		idToken bool
-		refresh bool
+		grant     oidc.GrantType
+		idToken   bool
+		refresh   bool
+		echoScope bool
+		issuedTyp oidc.IssuedTokenType
 	}{
-		{oidc.GrantAuthorizationCode, true, true},
-		{oidc.GrantClientCredentials, false, false},
-		{oidc.GrantPassword, true, false},
-		{oidc.GrantRefreshToken, true, true},
-		{oidc.GrantJWTBearer, false, false},
-		{oidc.GrantTokenExchange, false, false},
+		{oidc.GrantAuthorizationCode, true, true, true, ""},
+		{oidc.GrantClientCredentials, false, false, true, ""},
+		{oidc.GrantPassword, true, false, true, ""},
+		{oidc.GrantRefreshToken, true, true, true, ""},
+		{oidc.GrantJWTBearer, false, false, true, ""},
+		{oidc.GrantTokenExchange, false, false, false, oidc.IssuedTokenAccessToken},
 	}
 	for _, tc := range tests {
 		assert.Equalf(t, tc.idToken, tc.grant.IssuesIDToken(), "%s IssuesIDToken", tc.grant)
 		assert.Equalf(t, tc.refresh, tc.grant.IssuesRefreshToken(), "%s IssuesRefreshToken", tc.grant)
+		assert.Equalf(t, tc.echoScope, tc.grant.EchoesScope(), "%s EchoesScope", tc.grant)
+		assert.Equalf(t, tc.issuedTyp, tc.grant.IssuedTokenType(), "%s IssuedTokenType", tc.grant)
 	}
 
 	assert.False(t, oidc.GrantType("bogus").Valid())
