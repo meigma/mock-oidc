@@ -29,9 +29,12 @@
   atop the plan's Slice 3 section.
 - Ops gotchas (2026-07-02): agent-authored commits sign only while the gpg-agent cache is
   warm — check `git log --format='%G?'` before pushing, re-sign via
-  `git rebase --exec 'git commit --amend --no-edit -S' <base>`. Moon's task cache can mask
-  drift gates (mockery-check passed locally on stale cache, failed in CI) — for DoD runs,
-  regenerate directly (`mise x -- mockery`) or `moon run --force` the drift checks.
+  `git rebase --exec 'git commit --amend --no-edit -S' <base>`. Drift-gate gotcha (root
+  cause found in session 002/slice 2, correcting the earlier moon-cache hypothesis): a
+  Homebrew mockery v3.7.0 at /opt/homebrew/bin shadows the mise-pinned v3.7.1 on bare
+  PATH (3.7.0 emits `interface{}`, 3.7.1 emits `any`). Always run gates through the pinned
+  toolchain: `mise x -- moon run check` / `mise x -- mockery`. Consider `brew uninstall
+  mockery` on this host. CI uses mise, so it always matches the pin.
 - Execution blueprint: `.journal/002/mock-oidc-implementation-plan.md` — the working,
   slice-by-slice implementation plan (Slices 0–6 + cross-cutting testing) that turns the
   technical design into an ordered, file-level, functionally-gated task list. Start here to

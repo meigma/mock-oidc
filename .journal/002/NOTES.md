@@ -159,3 +159,28 @@ Open threads:
   authorize/login/HTML+favicon+token-DTO → composition+R3), fidelity+protocol
   (opus) + mechanical (sonnet) reviewers, repair, DoD. Agents told to commit
   --no-gpg-sign if pinentry fails; orchestrator re-signs before push.
+
+## 2026-07-02 09:04 — Slice 2 implemented; PR #10 open
+- Workflow wf_2fdfa85f-a55 completed (8 agents, ~1.1M subagent tokens, ~70min).
+  ZERO review findings across all three lenses (fidelity, protocol+browser,
+  mechanical) — repair skipped. All 9 functional DoD items PASS: full curl
+  auth-code dance (RFC 7636 S256 vector), interactive login via
+  JSON_CONFIG='{"interactiveLogin": true}' (login page → sub=alice id_token),
+  form_post (only code+state), PKCE negatives (tampered → invalid_pkce; reuse →
+  unknown-or-already-used; burned even on failed PKCE), R3 container flow, favicon.
+- MYSTERY SOLVED (corrects the slice-1 moon-cache hypothesis; TECH_NOTES updated):
+  Homebrew mockery v3.7.0 at /opt/homebrew/bin shadows the mise-pinned v3.7.1 on
+  bare PATH (3.7.0 → interface{}, 3.7.1 → any). That produced slice 1's drifted
+  mocks. Rule: run gates via `mise x --`. Suggest `brew uninstall mockery`.
+- Notable implementation notes: alg=none unsecured JWT added to signing adapter
+  strictly for nonce-bearing refresh format (excluded from discovery/parse);
+  Huma v2.38 cannot bind embedded-struct query params (empirically verified) —
+  authorize inputs declared flat; appendParams avoids url.Parse round-trip to
+  preserve fragments; decodeAuthorizeRequest infallible (edge rejects nothing,
+  domain owns response_type policy).
+- GPG: 8/11 commits unsigned mid-run; cache was warm at push time → re-signed all
+  via rebase --exec; 11/11 G-good. Pushed; PR #10 opened (squash):
+  https://github.com/meigma/mock-oidc/pull/10
+- Next: await review/merge of PR #10 → tick Slice 2 boxes, remove worktree, start
+  Slice 3 (token lifecycle: refresh redemption, userinfo, introspect, endsession)
+  — REMEMBER the JOSE re-assessment marker atop the plan's Slice 3 section.
