@@ -70,18 +70,73 @@ func TestCodeStoreSingleUse(t *testing.T) {
 	assert.ErrorIs(t, err, memory.ErrCodeNotFound)
 }
 
-// TestRefreshTokenStoreSave covers the persist-only adapter: a saved record is
-// retained and the latest write for a token wins.
-func TestRefreshTokenStoreSave(t *testing.T) {
+// TestRefreshTokenStoreSaveLookup covers the persist-and-redeem adapter: a saved
+// record is retrieved by token and the latest write for a token wins.
+func TestRefreshTokenStoreSaveLookup(t *testing.T) {
 	t.Parallel()
 
 	store := memory.NewRefreshTokenStore()
 	ctx := context.Background()
 	rec := oidc.RefreshRecord{Issuer: "default", Subject: "alice", Format: oidc.RefreshBareUUID}
 
-	require.NoError(t, store.Save(ctx, "rt-1", rec))
-	// Overwriting the same token is allowed (no read path exists until Slice 3).
-	require.NoError(t, store.Save(ctx, "rt-1", rec))
+	require.NoError(t, store.Save(ctx, "default", "rt-1", rec))
+	got, err := store.Lookup(ctx, "default", "rt-1")
+	require.NoError(t, err)
+	assert.Equal(t, rec, got)
+
+	// The latest write for a token wins.
+	updated := oidc.RefreshRecord{Issuer: "default", Subject: "bob", Format: oidc.RefreshBareUUID}
+	require.NoError(t, store.Save(ctx, "default", "rt-1", updated))
+	got, err = store.Lookup(ctx, "default", "rt-1")
+	require.NoError(t, err)
+	assert.Equal(t, updated, got)
+}
+
+// TestRefreshTokenStoreLookupResolvesByTokenAcrossIssuers proves Lookup resolves
+// by token regardless of the presented issuer, so the service (not the store)
+// raises the corrected cross-issuer text — a miss would lose that distinction.
+func TestRefreshTokenStoreLookupResolvesByTokenAcrossIssuers(t *testing.T) {
+	t.Parallel()
+
+	store := memory.NewRefreshTokenStore()
+	ctx := context.Background()
+	rec := oidc.RefreshRecord{Issuer: "issuer-a", Subject: "alice", Format: oidc.RefreshBareUUID}
+	require.NoError(t, store.Save(ctx, "issuer-a", "rt-1", rec))
+
+	// Presented under a DIFFERENT issuer, the record still resolves by token.
+	got, err := store.Lookup(ctx, "issuer-b", "rt-1")
+	require.NoError(t, err)
+	assert.Equal(t, oidc.IssuerID("issuer-a"), got.Issuer)
+}
+
+// TestRefreshTokenStoreLookupMissIsSentinel covers the miss path: an unknown
+// token returns the ErrRefreshTokenNotFound sentinel the service maps to
+// invalid_grant.
+func TestRefreshTokenStoreLookupMissIsSentinel(t *testing.T) {
+	t.Parallel()
+
+	store := memory.NewRefreshTokenStore()
+	_, err := store.Lookup(context.Background(), "default", "absent")
+	require.ErrorIs(t, err, memory.ErrRefreshTokenNotFound)
+}
+
+// TestRefreshTokenStoreRemoveIsIdempotent covers revocation: Remove drops a token
+// and removing an absent token is a no-op (idempotent revoke).
+func TestRefreshTokenStoreRemoveIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	store := memory.NewRefreshTokenStore()
+	ctx := context.Background()
+	rec := oidc.RefreshRecord{Issuer: "default", Subject: "alice", Format: oidc.RefreshBareUUID}
+	require.NoError(t, store.Save(ctx, "default", "rt-1", rec))
+
+	require.NoError(t, store.Remove(ctx, "rt-1"))
+	_, err := store.Lookup(ctx, "default", "rt-1")
+	require.ErrorIs(t, err, memory.ErrRefreshTokenNotFound)
+
+	// Removing an already-absent token is a no-op, so revoke is idempotent.
+	require.NoError(t, store.Remove(ctx, "rt-1"))
+	require.NoError(t, store.Remove(ctx, "never-existed"))
 }
 
 func TestClockFreezeAdvanceUnfreeze(t *testing.T) {

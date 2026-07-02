@@ -57,7 +57,8 @@ func newAuthServer(t *testing.T, interactive bool) *httptest.Server {
 	tokens := oidc.NewTokenService(registry, signer, signer, clock,
 		oidc.WithCodeStore(codes), oidc.WithRefreshStore(refresh))
 	authorize := oidc.NewAuthorizeService(codes, clock, interactive)
-	deps := httpapi.Deps{Provider: provider, Tokens: tokens, Authorize: authorize}
+	session := oidc.NewSessionService(signer, refresh, clock)
+	deps := httpapi.Deps{Provider: provider, Tokens: tokens, Authorize: authorize, Session: session}
 
 	discard := observability.NewLogger(io.Discard, slog.LevelError, "json")
 	handler := adapterhttp.NewRouter(adapterhttp.RouterDeps{

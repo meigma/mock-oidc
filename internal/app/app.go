@@ -66,10 +66,12 @@ type options struct {
 
 // signingProvider is the crypto capability set the composition root consumes. It
 // is declared here (consumer side) per the dependency rule; *signing.Provider
-// satisfies it. The TokenVerifier facet joins in Slice 3.
+// satisfies it. The TokenVerifier facet backs the Slice 3 SessionService
+// (/userinfo, /introspect).
 type signingProvider interface {
 	oidc.Signer
 	oidc.KeyStore
+	oidc.TokenVerifier
 }
 
 // WithSeed supplies the parsed OIDC seed. serve passes config.LoadSeed's result;
@@ -220,13 +222,16 @@ func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, erro
 		oidc.WithTokenLogger(logger),
 		oidc.WithCodeStore(codes),
 		oidc.WithRefreshStore(refresh),
+		oidc.WithRefreshRotation(o.seed.RotateRefreshToken),
 	)
 	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin)
+	session := oidc.NewSessionService(sign, refresh, clock)
 
 	return httpapi.Registrar(httpapi.Deps{
 		Provider:  provider,
 		Tokens:    tokens,
 		Authorize: authorize,
+		Session:   session,
 		Logger:    logger,
 	}), nil
 }

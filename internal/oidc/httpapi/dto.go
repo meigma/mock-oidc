@@ -55,6 +55,23 @@ type TokenResponseDTO struct {
 	Scope           string `json:"scope,omitempty"`
 }
 
+// IntrospectionDTO documents the RFC 7662 introspection response for the OpenAPI
+// spec. The runtime body is an ordered map (so custom claims flow through and a
+// single-element aud collapses to a scalar), but this typed shape gives the spec
+// the standard registered fields. active is always present; every other field is
+// omitempty because an inactive response carries only {"active":false}.
+type IntrospectionDTO struct {
+	Active    bool   `json:"active"`
+	TokenType string `json:"token_type,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	Sub       string `json:"sub,omitempty"`
+	Iss       string `json:"iss,omitempty"`
+	Jti       string `json:"jti,omitempty"`
+	Iat       int64  `json:"iat,omitempty"`
+	Nbf       int64  `json:"nbf,omitempty"`
+	Exp       int64  `json:"exp,omitempty"`
+}
+
 // OAuth2Error is the RFC 6749 §5.2 error body. It is returned as a success-shaped
 // output value (never a Go error) so it bypasses Huma's RFC 9457 path. Text is
 // emitted correct-case — upstream lowercases the whole body, mangling
