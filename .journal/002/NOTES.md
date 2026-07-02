@@ -184,3 +184,18 @@ Open threads:
 - Next: await review/merge of PR #10 → tick Slice 2 boxes, remove worktree, start
   Slice 3 (token lifecycle: refresh redemption, userinfo, introspect, endsession)
   — REMEMBER the JOSE re-assessment marker atop the plan's Slice 3 section.
+
+## 2026-07-02 09:20 — PR #10 merged; JOSE re-assessment resolved; Slice 3 starting
+- PR #10 squash-merged → master@19fb9b0 (CI green). Branch + worktree removed;
+  29 Slice 2 plan boxes ticked + DONE line.
+- JOSE re-assessment RESOLVED: verification stays stdlib. Basis: S3 verifies only
+  self-issued tokens with known keys (kid==issuerID via own KeyStore; refresh
+  redemption is a store lookup, not a JWS parse). Hardening rules mandated in the
+  plan's Slice 3 note (alg allowlist/never none; alg from resolved key not header;
+  typ gate JWT|at+jwt; iss match; injected-Clock time checks; constant-time
+  compares). TECH_NOTES updated. Revisit only if foreign-token verification ever
+  enters scope.
+- Slice 3 starting: worktree feat/slice-3-token-lifecycle off master@19fb9b0;
+  4-stage workflow (domain/ports/memory → SessionService+refresh grant+verifier →
+  httpapi userinfo/introspect/revoke/endsession → composition+rotate flag+R3),
+  protocol reviewer explicitly hunting alg-confusion/none/typ-gate/clock bugs.

@@ -25,8 +25,12 @@
   JOSE library** (deviation from the TDD's go-jose assumption). Rationale: zero third-party
   code in the key-holding package, emission-only JOSE scope, byte-level control over the
   typed ClaimSet wire format; independent verification in tests via golang-jwt/jwt/v5.
-  **Re-assess at Slice 3** when TokenVerifier (D-4: JWT + at+jwt) lands — marker note sits
-  atop the plan's Slice 3 section.
+  **RESOLVED at Slice 3 (2026-07-02): verification also stays stdlib.** Scope is
+  self-issued tokens with known keys (kid==issuerID via own KeyStore; no foreign JWKS/JWE;
+  refresh redemption = store lookup, not JWS parse). Hardening mandated in the verifier:
+  alg allowlist (never none), algorithm from resolved key not token header, typ gate
+  JWT|at+jwt, iss match, injected-Clock time checks. Full rule list in the plan's Slice 3
+  note. Revisit only if verification of foreign tokens ever enters scope.
 - Ops gotchas (2026-07-02): agent-authored commits sign only while the gpg-agent cache is
   warm — check `git log --format='%G?'` before pushing, re-sign via
   `git rebase --exec 'git commit --amend --no-edit -S' <base>`. Drift-gate gotcha (root
