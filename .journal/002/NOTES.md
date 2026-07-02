@@ -64,3 +64,40 @@ Notable plan decisions worth carrying forward:
 Next: await developer direction — likely begin Slice 0 on a fresh implementation
 worktree off the fetched default branch. Consider whether to promote the design +
 plan into repo `docs/` when implementation starts (a product call, still open).
+
+## 2026-07-01 21:42 — Slice 0 implemented; PR #8 open
+Model policy (developer mandate, saved to agent memory): workflow/agent calls must
+NEVER default the model (inherits Fable = quota destruction). Cap at opus; sonnet
+for easier/mechanical stages.
+
+Done:
+- Worktree `feat/slice-0-skeleton` created off master (== origin/master, 76a4b57).
+- Slice 0 implemented via workflow `wf_2bc60951-4f2` (7 agents, opus/sonnet only):
+  3 sequential impl stages → 2 review critics → repair → functional DoD.
+- 10 commits; PR #8 opened (squash): "feat: establish mock-oidc walking skeleton
+  (slice 0)" — https://github.com/meigma/mock-oidc/pull/8
+- All 7 DoD items PASS with evidence: build + bin/mock-oidc; go test incl. arch
+  gate; moon run check green (9 tasks) + moon ci resolves test-integration; both
+  grep gates clean; `mise run image-local` built+loaded mock-oidc:dev (melange
+  1.0.4-r0 apk → apko, nonroot, entrypoint /usr/bin/mock-oidc); container boots
+  zero-config with FOR-TESTING-ONLY banner, /isalive /healthz /readyz 200,
+  /metrics 200 on :9090; testcontainers smoke test passed (no skip).
+- Review found 4 real findings (template-go-api residue in release-dry-run.yml,
+  .github/scripts/*.py, CHANGELOG.md) — all fixed in fbffcd6.
+
+Deviations/nuances recorded (also in PR body):
+- /metrics is on the dedicated :9090 listener (template default kept); plan DoD
+  wording implied the API port. Plan text imprecise, implementation correct.
+- `goconst.ignore-tests: true` added to .golangci.yml (pre-existing lint break
+  surfaced by new test literals).
+- mise.toml: sqlc/goose tool pins removed + re-locked (0.H gate requires it,
+  though 0.B literally said leave pins untouched — grep gate wins).
+- SERVER_PORT/PORT/JSON_CONFIG aliases are bound in cli but not yet consumed by
+  config.Load (S0 has no seed layer); LOG_LEVEL is live. Functional in Slice 1.
+
+Open threads:
+- PR #8 awaiting CI + merge. After merge: tick Slice 0 checkboxes in the plan,
+  remove the worktree (`wt remove feat/slice-0-skeleton`), start Slice 1.
+- Inherited version lineage: .release-please-manifest.json still carries the
+  template's 1.0.4 version; CHANGELOG history was identifier-renamed. Decide on a
+  version/CHANGELOG reset before the first real release.
