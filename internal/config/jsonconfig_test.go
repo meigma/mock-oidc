@@ -63,6 +63,40 @@ func TestLoadSeedInlineJSON(t *testing.T) {
 	assert.JSONEq(t, `{"kty":"RSA","kid":"seed-a"}`, string(seed.InitialKeys[0]))
 }
 
+// TestLoadSeedInteractiveLogin verifies the top-level interactiveLogin flag
+// parses into the seed, forcing GET /authorize to render the login page.
+func TestLoadSeedInteractiveLogin(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.True(t, seed.InteractiveLogin, "interactiveLogin honored from JSON config")
+}
+
+// TestLoadSeedInteractiveLoginDefaultsFalse verifies interactiveLogin defaults to
+// false (zero-config = non-interactive authorize issues codes directly).
+func TestLoadSeedInteractiveLoginDefaultsFalse(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"tokenProvider":{"keyProvider":{"algorithm":"RS256"}}}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.False(t, seed.InteractiveLogin, "absent interactiveLogin defaults to false")
+}
+
+// TestDefaultSeedInteractiveLoginFalse verifies the zero-config seed leaves
+// interactive login off.
+func TestDefaultSeedInteractiveLoginFalse(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, config.DefaultSeed().InteractiveLogin)
+}
+
 // TestLoadSeedInlineOverridesPath verifies JSON_CONFIG (inline) wins over
 // JSON_CONFIG_PATH.
 func TestLoadSeedInlineOverridesPath(t *testing.T) {
