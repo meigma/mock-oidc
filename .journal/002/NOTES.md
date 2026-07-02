@@ -251,3 +251,16 @@ Open threads:
 - Next: merge PR #12 → tick Slice 4 boxes → Slice 5 (multi-issuer, scenarios,
   /_mock control plane — the biggest remaining slice; includes seed callback
   parsing that unlocks the deferred R3 audience-precedence + at+jwt live proofs).
+
+## 2026-07-02 13:40 — PR #12 merged; Slice 5 starting
+- PR #12 squash-merged → master@db5c92b (CI green). Cleanup done; 20 Slice 4
+  boxes ticked + DONE line.
+- Slice 5 starting: worktree feat/slice-5-control-plane off master@db5c92b.
+  5-stage workflow (domain scenario/capture/mint/resolver-chain → memory
+  queue/recorder/clock facets + mocks → controlapi package → httpapi recording
+  seam + debugger + R2 → config/composition + R3 + gates). Second reviewer =
+  control-plane security lens (recorder isolation, constant-time token gate,
+  reserved-prefix, RFC 9457-on-control vs OAuth2-on-protocol, debugger cookie/
+  escaping). Plan DoD names ghcr image — corrected to mock-oidc:dev (publish
+  is S6). This slice unlocks the two deferred live proofs (callback-audience
+  precedence, at+jwt via scenario JOSEType override) — DoD includes both.
