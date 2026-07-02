@@ -38,17 +38,146 @@ func (_m *RefreshTokenStore) EXPECT() *RefreshTokenStore_Expecter {
 	return &RefreshTokenStore_Expecter{mock: &_m.Mock}
 }
 
+// Lookup provides a mock function for the type RefreshTokenStore
+func (_mock *RefreshTokenStore) Lookup(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken) (oidc.RefreshRecord, error) {
+	ret := _mock.Called(ctx, issuer, tok)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Lookup")
+	}
+
+	var r0 oidc.RefreshRecord
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.IssuerID, oidc.RefreshToken) (oidc.RefreshRecord, error)); ok {
+		return returnFunc(ctx, issuer, tok)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.IssuerID, oidc.RefreshToken) oidc.RefreshRecord); ok {
+		r0 = returnFunc(ctx, issuer, tok)
+	} else {
+		r0 = ret.Get(0).(oidc.RefreshRecord)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, oidc.IssuerID, oidc.RefreshToken) error); ok {
+		r1 = returnFunc(ctx, issuer, tok)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// RefreshTokenStore_Lookup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Lookup'
+type RefreshTokenStore_Lookup_Call struct {
+	*mock.Call
+}
+
+// Lookup is a helper method to define mock.On call
+//   - ctx context.Context
+//   - issuer oidc.IssuerID
+//   - tok oidc.RefreshToken
+func (_e *RefreshTokenStore_Expecter) Lookup(ctx any, issuer any, tok any) *RefreshTokenStore_Lookup_Call {
+	return &RefreshTokenStore_Lookup_Call{Call: _e.mock.On("Lookup", ctx, issuer, tok)}
+}
+
+func (_c *RefreshTokenStore_Lookup_Call) Run(run func(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken)) *RefreshTokenStore_Lookup_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 oidc.IssuerID
+		if args[1] != nil {
+			arg1 = args[1].(oidc.IssuerID)
+		}
+		var arg2 oidc.RefreshToken
+		if args[2] != nil {
+			arg2 = args[2].(oidc.RefreshToken)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RefreshTokenStore_Lookup_Call) Return(refreshRecord oidc.RefreshRecord, err error) *RefreshTokenStore_Lookup_Call {
+	_c.Call.Return(refreshRecord, err)
+	return _c
+}
+
+func (_c *RefreshTokenStore_Lookup_Call) RunAndReturn(run func(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken) (oidc.RefreshRecord, error)) *RefreshTokenStore_Lookup_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Remove provides a mock function for the type RefreshTokenStore
+func (_mock *RefreshTokenStore) Remove(ctx context.Context, tok oidc.RefreshToken) error {
+	ret := _mock.Called(ctx, tok)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Remove")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.RefreshToken) error); ok {
+		r0 = returnFunc(ctx, tok)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RefreshTokenStore_Remove_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Remove'
+type RefreshTokenStore_Remove_Call struct {
+	*mock.Call
+}
+
+// Remove is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tok oidc.RefreshToken
+func (_e *RefreshTokenStore_Expecter) Remove(ctx any, tok any) *RefreshTokenStore_Remove_Call {
+	return &RefreshTokenStore_Remove_Call{Call: _e.mock.On("Remove", ctx, tok)}
+}
+
+func (_c *RefreshTokenStore_Remove_Call) Run(run func(ctx context.Context, tok oidc.RefreshToken)) *RefreshTokenStore_Remove_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 oidc.RefreshToken
+		if args[1] != nil {
+			arg1 = args[1].(oidc.RefreshToken)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RefreshTokenStore_Remove_Call) Return(err error) *RefreshTokenStore_Remove_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RefreshTokenStore_Remove_Call) RunAndReturn(run func(ctx context.Context, tok oidc.RefreshToken) error) *RefreshTokenStore_Remove_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Save provides a mock function for the type RefreshTokenStore
-func (_mock *RefreshTokenStore) Save(ctx context.Context, token oidc.RefreshToken, rec oidc.RefreshRecord) error {
-	ret := _mock.Called(ctx, token, rec)
+func (_mock *RefreshTokenStore) Save(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken, rec oidc.RefreshRecord) error {
+	ret := _mock.Called(ctx, issuer, tok, rec)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Save")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.RefreshToken, oidc.RefreshRecord) error); ok {
-		r0 = returnFunc(ctx, token, rec)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, oidc.IssuerID, oidc.RefreshToken, oidc.RefreshRecord) error); ok {
+		r0 = returnFunc(ctx, issuer, tok, rec)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -62,30 +191,36 @@ type RefreshTokenStore_Save_Call struct {
 
 // Save is a helper method to define mock.On call
 //   - ctx context.Context
-//   - token oidc.RefreshToken
+//   - issuer oidc.IssuerID
+//   - tok oidc.RefreshToken
 //   - rec oidc.RefreshRecord
-func (_e *RefreshTokenStore_Expecter) Save(ctx any, token any, rec any) *RefreshTokenStore_Save_Call {
-	return &RefreshTokenStore_Save_Call{Call: _e.mock.On("Save", ctx, token, rec)}
+func (_e *RefreshTokenStore_Expecter) Save(ctx any, issuer any, tok any, rec any) *RefreshTokenStore_Save_Call {
+	return &RefreshTokenStore_Save_Call{Call: _e.mock.On("Save", ctx, issuer, tok, rec)}
 }
 
-func (_c *RefreshTokenStore_Save_Call) Run(run func(ctx context.Context, token oidc.RefreshToken, rec oidc.RefreshRecord)) *RefreshTokenStore_Save_Call {
+func (_c *RefreshTokenStore_Save_Call) Run(run func(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken, rec oidc.RefreshRecord)) *RefreshTokenStore_Save_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 oidc.RefreshToken
+		var arg1 oidc.IssuerID
 		if args[1] != nil {
-			arg1 = args[1].(oidc.RefreshToken)
+			arg1 = args[1].(oidc.IssuerID)
 		}
-		var arg2 oidc.RefreshRecord
+		var arg2 oidc.RefreshToken
 		if args[2] != nil {
-			arg2 = args[2].(oidc.RefreshRecord)
+			arg2 = args[2].(oidc.RefreshToken)
+		}
+		var arg3 oidc.RefreshRecord
+		if args[3] != nil {
+			arg3 = args[3].(oidc.RefreshRecord)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -96,7 +231,7 @@ func (_c *RefreshTokenStore_Save_Call) Return(err error) *RefreshTokenStore_Save
 	return _c
 }
 
-func (_c *RefreshTokenStore_Save_Call) RunAndReturn(run func(ctx context.Context, token oidc.RefreshToken, rec oidc.RefreshRecord) error) *RefreshTokenStore_Save_Call {
+func (_c *RefreshTokenStore_Save_Call) RunAndReturn(run func(ctx context.Context, issuer oidc.IssuerID, tok oidc.RefreshToken, rec oidc.RefreshRecord) error) *RefreshTokenStore_Save_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -14,6 +14,50 @@ type TokenResponse struct {
 	Scope        Scopes
 }
 
+// IntrospectionResult is the typed RFC 7662 introspection outcome. Active
+// reports whether the token verified; when true, Claims carries the verified
+// claim set and TokenType is the introspection token_type (default Bearer). The
+// edge maps this to the wire DTO — collapsing a single-element aud to a scalar
+// and emitting the registered claims — so the domain stays transport-free.
+type IntrospectionResult struct {
+	Active    bool
+	TokenType TokenType
+	Claims    ClaimSet
+}
+
+// InactiveIntrospection is the {active:false} result an unverifiable token
+// yields. It is reported at 200, never as an error (parity: introspecting a bad
+// token is not a failure).
+func InactiveIntrospection() IntrospectionResult {
+	return IntrospectionResult{Active: false, TokenType: "", Claims: ClaimSet{}}
+}
+
+// IntrospectionFrom builds an active introspection result from a verified claim
+// set, defaulting token_type to Bearer. The single-element aud -> scalar collapse
+// lives on the DTO at the edge; the domain result stays typed.
+func IntrospectionFrom(claims ClaimSet) IntrospectionResult {
+	return IntrospectionResult{Active: true, TokenType: TokenTypeBearer, Claims: claims}
+}
+
+// EndSessionResult is the typed RP-initiated-logout outcome. A non-empty
+// RedirectURI means the edge issues a 302 to it (appending ?state=State only when
+// State is non-empty); an empty RedirectURI means the edge renders the plain
+// "logged out" page at 200. The domain never builds the URL — the edge shapes it.
+type EndSessionResult struct {
+	RedirectURI string
+	State       string
+}
+
+// NewEndSessionResult builds the logout outcome from the query-supplied redirect
+// URI and state (both may be empty).
+func NewEndSessionResult(uri, state string) EndSessionResult {
+	return EndSessionResult{RedirectURI: uri, State: state}
+}
+
+// Redirect reports whether a post-logout redirect URI was supplied (302) versus
+// the plain logged-out page (200).
+func (r EndSessionResult) Redirect() bool { return r.RedirectURI != "" }
+
 // AuthorizeResultKind enumerates what /authorize decided. The adapter switches
 // on it: ShowLogin renders the interactive login page; FormPost renders the
 // auto-submit HTML; Redirect is a 302 with the code in the query or fragment

@@ -47,6 +47,20 @@ func NewProtocolError(code ErrorCode, desc string, status int) *ProtocolError {
 	return &ProtocolError{Code: code, Description: desc, HTTPStatus: status, cause: nil}
 }
 
+// NewInvalidToken reports a token-verification failure as invalid_token (401),
+// wrapping the underlying verifier cause so [errors.Is]/[errors.As] can reach it
+// while the client-visible description stays a stable, non-leaking phrase. It is
+// the /userinfo verify-fail constructor; the /introspect path reports
+// {active:false} instead of raising this.
+func NewInvalidToken(cause error) *ProtocolError {
+	return &ProtocolError{
+		Code:        CodeInvalidToken,
+		Description: "the access token is invalid",
+		HTTPStatus:  statusUnauthorized,
+		cause:       cause,
+	}
+}
+
 // Error renders the code and description, satisfying the error interface.
 func (e *ProtocolError) Error() string { return string(e.Code) + ": " + e.Description }
 
@@ -168,11 +182,12 @@ func InvalidToken(desc string) *ProtocolError {
 }
 
 // UnsupportedTokenType reports a bad revoke hint as
-// "unsupported token type: <hint>" (400).
-func UnsupportedTokenType(hint string) *ProtocolError {
+// "unsupported token type: <hint>" (400). It takes the typed TokenTypeHint so the
+// SessionService can hand its parsed hint straight through.
+func UnsupportedTokenType(hint TokenTypeHint) *ProtocolError {
 	return &ProtocolError{
 		Code:        CodeUnsupportedTokenType,
-		Description: "unsupported token type: " + hint,
+		Description: "unsupported token type: " + string(hint),
 		HTTPStatus:  statusBadRequest,
 		cause:       nil,
 	}

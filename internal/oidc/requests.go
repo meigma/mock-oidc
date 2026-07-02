@@ -56,6 +56,65 @@ func (r TokenRequest) CallbackInput() CallbackInput {
 	}
 }
 
+// TokenTypeHint is the closed OAuth2 `token_type_hint` (RFC 7009/7662) the
+// domain recognizes at /revoke and /introspect. The empty value means "no hint
+// given"; any non-member string the edge parses is carried through verbatim so
+// the service can reject it with unsupported_token_type. /revoke supports only
+// TokenHintRefreshToken — access_token is a recognized hint but not a revocable
+// one here.
+type TokenTypeHint string
+
+// The recognized token_type_hint values.
+const (
+	TokenHintAccessToken  TokenTypeHint = "access_token"
+	TokenHintRefreshToken TokenTypeHint = "refresh_token"
+)
+
+// allTokenTypeHints is the authoritative membership list; Valid derives from it.
+//
+//nolint:gochecknoglobals // single source of truth for the recognized token_type_hint set.
+var allTokenTypeHints = []TokenTypeHint{TokenHintAccessToken, TokenHintRefreshToken}
+
+// Valid reports whether h is a recognized token_type_hint (access_token or
+// refresh_token). The empty value and any other string are not.
+func (h TokenTypeHint) Valid() bool {
+	return slices.Contains(allTokenTypeHints, h)
+}
+
+// UserInfoRequest is the typed /userinfo command: the issuer and the bearer
+// access token parsed from the Authorization header at the edge.
+type UserInfoRequest struct {
+	Issuer IssuerID
+	Token  SignedToken
+}
+
+// IntrospectionRequest is the typed /introspect command (RFC 7662): the issuer,
+// the token to inspect, and the optional token_type_hint. Client authentication
+// is a presence-only check enforced at the edge, not carried here.
+type IntrospectionRequest struct {
+	Issuer IssuerID
+	Token  SignedToken
+	Hint   TokenTypeHint
+}
+
+// RevocationRequest is the typed /revoke command (RFC 7009). Token is a
+// RefreshToken because /revoke only removes refresh tokens; Hint gates the
+// operation (anything but refresh_token -> unsupported_token_type).
+type RevocationRequest struct {
+	Issuer IssuerID
+	Token  RefreshToken
+	Hint   TokenTypeHint
+}
+
+// EndSessionRequest is the typed RP-initiated-logout command. Both fields are
+// read from the QUERY only (parity); State is appended to the redirect by the
+// edge only when present.
+type EndSessionRequest struct {
+	Issuer                IssuerID
+	PostLogoutRedirectURI string
+	State                 string
+}
+
 // ResponseType is the closed OAuth2 `response_type`. Only ResponseTypeCode is
 // dispatched by /authorize; the hybrid/implicit members are advertised in
 // discovery but not implemented, so they exist as named values, not as behavior.
