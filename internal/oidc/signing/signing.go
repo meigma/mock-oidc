@@ -43,6 +43,10 @@ type issuerKey struct {
 // adapter can actually produce every algorithm discovery advertises.
 type keyMaterial interface {
 	sign(alg oidc.SigningAlgorithm, input []byte) ([]byte, error)
+	// verify checks sig over input for alg using the material's PUBLIC key,
+	// returning nil on a valid signature and a non-nil error otherwise. It backs
+	// the TokenVerifier facet.
+	verify(alg oidc.SigningAlgorithm, input, sig []byte) error
 	publicParams() (oidc.KeyType, oidc.PublicParams, error)
 }
 
