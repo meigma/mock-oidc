@@ -148,3 +148,13 @@ func (rec CodeRecord) CallbackInput(req TokenRequest) CallbackInput {
 	}
 	return in
 }
+
+// loginClaims returns the interactive-login claims cached with this code, or an
+// empty set when the code was issued without a login (the direct-code path).
+// They are merged add-only into the minted tokens at exchange time.
+func (rec CodeRecord) loginClaims() CustomClaims {
+	if rec.Login == nil {
+		return CustomClaims{}
+	}
+	return rec.Login.Claims
+}

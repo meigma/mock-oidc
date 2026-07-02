@@ -12,6 +12,11 @@ type TokenRequest struct {
 	Grant  GrantType
 	Client Client
 	Scopes Scopes
+
+	// authorization_code grant parameters, attached via WithAuthorizationCode.
+	Code         AuthorizationCode // the code being redeemed
+	CodeVerifier string            // PKCE code_verifier (may be empty when no challenge was registered)
+	RedirectURI  string            // captured, intentionally NOT validated (parity)
 }
 
 // NewTokenRequest builds a TokenRequest for the given issuer, grant, and client.
@@ -23,6 +28,16 @@ func NewTokenRequest(issuer IssuerID, grant GrantType, client Client) TokenReque
 // WithScopes returns a copy of the request carrying the parsed scopes.
 func (r TokenRequest) WithScopes(s Scopes) TokenRequest {
 	r.Scopes = s
+	return r
+}
+
+// WithAuthorizationCode returns a copy of the request carrying the
+// authorization_code grant parameters: the code being redeemed, the optional
+// PKCE code_verifier, and the captured (never validated) redirect_uri.
+func (r TokenRequest) WithAuthorizationCode(code AuthorizationCode, verifier, redirectURI string) TokenRequest {
+	r.Code = code
+	r.CodeVerifier = verifier
+	r.RedirectURI = redirectURI
 	return r
 }
 

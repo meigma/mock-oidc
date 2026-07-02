@@ -222,3 +222,29 @@ func (c ClaimSet) WithAZP(client ClientID) ClaimSet {
 	out.Azp = &azp
 	return out
 }
+
+// registeredClaimNames are the JWT claims the domain models as typed ClaimSet
+// fields; interactive-login (and other custom) claims must never shadow them, so
+// a login claim named e.g. "sub" cannot override the resolved subject.
+//
+//nolint:gochecknoglobals // fixed set of registered claim names guarded against custom-claim shadowing.
+var registeredClaimNames = map[string]struct{}{
+	"iss": {}, "sub": {}, "aud": {}, "iat": {}, "nbf": {}, "exp": {},
+	"jti": {}, "nonce": {}, "azp": {}, "tid": {}, "scope": {},
+}
+
+// WithLoginClaims returns a fresh ClaimSet with the interactive-login claims
+// folded in add-only (putIfAbsent): a login claim never overwrites a claim
+// already present in Custom (a configured mapping wins) and never shadows a
+// registered claim (sub/iss/aud/... always win). It is copy-on-write — the
+// receiver is unchanged and the copy shares no backing map.
+func (c ClaimSet) WithLoginClaims(login CustomClaims) ClaimSet {
+	out := c.clone()
+	for _, e := range login.Entries() {
+		if _, reserved := registeredClaimNames[e.Name]; reserved {
+			continue
+		}
+		out.Custom.SetIfAbsent(e.Name, e.Value)
+	}
+	return out
+}

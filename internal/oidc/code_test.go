@@ -182,6 +182,37 @@ func TestChooseRefreshFormat(t *testing.T) {
 	assert.Equal(t, oidc.RefreshPlainJWT, oidc.ChooseRefreshFormat(&n))
 }
 
+// TestClaimSetWithLoginClaims confirms the login-claims merge is add-only
+// (putIfAbsent): a login claim never overwrites an existing custom (mapping)
+// claim, never shadows a registered claim, and the receiver is untouched.
+func TestClaimSetWithLoginClaims(t *testing.T) {
+	t.Parallel()
+
+	var base oidc.ClaimSet
+	base.Subject = "alice"
+	base.Custom.Set("role", "admin") // a mapping claim already in place
+
+	var login oidc.CustomClaims
+	login.Set("role", "guest")              // collides with the mapping claim → dropped
+	login.Set("email", "alice@example.com") // new → added
+	login.Set("sub", "evil")                // registered name → dropped
+
+	out := base.WithLoginClaims(login)
+
+	role, _ := out.Custom.Get("role")
+	assert.Equal(t, "admin", role, "the mapping claim wins over the login claim")
+	email, ok := out.Custom.Get("email")
+	assert.True(t, ok)
+	assert.Equal(t, "alice@example.com", email)
+	_, hasSub := out.Custom.Get("sub")
+	assert.False(t, hasSub, "a login claim named sub is dropped (registered wins)")
+	assert.Equal(t, oidc.Subject("alice"), out.Subject)
+
+	// Copy-on-write: the receiver gains no login claims.
+	_, leaked := base.Custom.Get("email")
+	assert.False(t, leaked, "the receiver's custom map is not mutated")
+}
+
 // TestClaimSetCopyOnWrite confirms WithNonce/WithAZP return fresh ClaimSets that
 // never alias the receiver's Custom map, so the id-token and access-token copies
 // derived from one defaultClaims value stay independent.

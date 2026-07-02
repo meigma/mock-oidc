@@ -28,6 +28,14 @@ const (
 	DefaultSigningAlgorithm = RS256
 )
 
+// AlgNone is the JWS "alg" of an RFC 7519 unsecured (unsigned) JWT. It is NOT a
+// producible/advertised signing algorithm — it is absent from
+// SupportedSigningAlgorithms and still refused by ParseSigningAlgorithm as a
+// configured value — and exists solely as the wire form of the nonce-bearing
+// refresh token (the Keycloak-JS accommodation): the signing adapter emits it
+// with an empty signature, carrying no key material.
+const AlgNone SigningAlgorithm = "none"
+
 // supportedSigningAlgorithms is the single source of truth for what the signer
 // can produce AND what discovery may advertise (the §6 constant-sync test pins
 // these equal). The EC family is listed first to match upstream discovery

@@ -83,6 +83,8 @@ type TokenService struct {
 	issuers issuerResolver
 	signer  Signer
 	clock   Clock
+	codes   CodeStore         // authorization_code cache; nil until the grant is wired
+	refresh RefreshTokenStore // refresh-token persistence; nil until the grant is wired
 	newID   func() string
 	logger  *slog.Logger
 }
@@ -105,6 +107,27 @@ func WithTokenID(newID func() string) TokenOption {
 	return func(s *TokenService) {
 		if newID != nil {
 			s.newID = newID
+		}
+	}
+}
+
+// WithCodeStore wires the single-use authorization-code cache. It is paired with
+// WithRefreshStore to enable the authorization_code grant; without both, that
+// grant is reported as an unsupported grant.
+func WithCodeStore(codes CodeStore) TokenOption {
+	return func(s *TokenService) {
+		if codes != nil {
+			s.codes = codes
+		}
+	}
+}
+
+// WithRefreshStore wires the refresh-token persistence used by the
+// authorization_code grant. See WithCodeStore.
+func WithRefreshStore(refresh RefreshTokenStore) TokenOption {
+	return func(s *TokenService) {
+		if refresh != nil {
+			s.refresh = refresh
 		}
 	}
 }
@@ -148,7 +171,12 @@ func (s *TokenService) Issue(
 	switch req.Grant {
 	case GrantClientCredentials:
 		return s.clientCredentials(ctx, issuer, req)
-	case GrantAuthorizationCode, GrantPassword, GrantRefreshToken, GrantJWTBearer, GrantTokenExchange:
+	case GrantAuthorizationCode:
+		if s.codes == nil || s.refresh == nil {
+			return TokenResponse{}, UnsupportedGrant(string(req.Grant))
+		}
+		return s.authorizationCode(ctx, issuer, req)
+	case GrantPassword, GrantRefreshToken, GrantJWTBearer, GrantTokenExchange:
 		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
 	default:
 		return TokenResponse{}, UnsupportedGrant(string(req.Grant))
@@ -181,6 +209,107 @@ func (s *TokenService) clientCredentials(
 		ExpiresIn:   expiresIn(now, cb.Expiry()),
 		Scope:       req.Scopes,
 	}, nil
+}
+
+// authorizationCode redeems a single-use code for the id/access/refresh triple.
+// The code is burned FIRST (codes.Take, before the PKCE check) so a failed
+// exchange still invalidates it. The nonce, login subject, and login claims come
+// from the CACHED record — never the token request — so the client cannot forge
+// them. The id_token audience is always [client_id] and carries azp; the
+// access_token audience follows the callback's 4-step chain; both carry the
+// cached nonce, and both merge the login claims add-only.
+func (s *TokenService) authorizationCode(
+	ctx context.Context,
+	issuer Issuer,
+	req TokenRequest,
+) (TokenResponse, error) {
+	rec, err := s.codes.Take(ctx, req.Code)
+	if err != nil {
+		return TokenResponse{}, UnknownAuthorizationCode()
+	}
+	if err = rec.VerifyPKCE(req.CodeVerifier); err != nil {
+		return TokenResponse{}, err // InvalidGrant("invalid_pkce: ...") or the asymmetric cases
+	}
+
+	in := rec.CallbackInput(req) // nonce + login from the cache, not the token request
+	cb, err := s.resolveCallback(ctx, issuer, in)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	now := s.clock.Now()
+	sub := cb.Subject(in)
+	login := rec.loginClaims()
+
+	alg := issuer.Key.Algorithm
+	typ := cb.TypeHeader(in)
+
+	// id_token: aud is ALWAYS [client_id]; nonce from the cache; azp added here only.
+	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now).
+		WithNonce(rec.Nonce).WithAZP(req.Client.ID).WithLoginClaims(login)
+	idToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign id token: %w", err)
+	}
+
+	// access_token: aud from the callback's 4-step chain; same nonce, no azp.
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now).
+		WithNonce(rec.Nonce).WithLoginClaims(login)
+	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
+	}
+
+	refresh, err := s.issueRefresh(ctx, issuer, sub, cb, rec.Nonce)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	return TokenResponse{
+		TokenType:    TokenTypeBearer,
+		IDToken:      idToken,
+		AccessToken:  accessToken,
+		RefreshToken: refresh,
+		Scope:        req.Scopes,
+		ExpiresIn:    expiresIn(now, cb.Expiry()),
+	}, nil
+}
+
+// issueRefresh mints and persists the refresh token for a grant. The domain
+// chooses the wire form (ChooseRefreshFormat): a bare UUID from the injected ID
+// source, or — when a nonce is present — an unsigned alg=none PlainJWT that the
+// signing adapter compact-serializes through the Signer port (the Keycloak-JS
+// accommodation carrying {jti, nonce}). The RefreshRecord is persisted for the
+// Slice 3 redemption path; the domain never serializes the token itself.
+func (s *TokenService) issueRefresh(
+	ctx context.Context,
+	issuer Issuer,
+	sub Subject,
+	cb TokenCallback,
+	nonce *Nonce,
+) (RefreshToken, error) {
+	format := ChooseRefreshFormat(nonce)
+	var token RefreshToken
+	switch format {
+	case RefreshBareUUID:
+		token = RefreshToken(s.newID())
+	case RefreshPlainJWT:
+		claims := ClaimSet{JWTID: s.newID(), Nonce: nonce}
+		signed, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, AlgNone, DefaultJOSEType, claims))
+		if err != nil {
+			return "", fmt.Errorf("sign refresh token: %w", err)
+		}
+		token = RefreshToken(signed)
+	}
+	rec := RefreshRecord{
+		Issuer:   issuer.ID,
+		Subject:  sub,
+		Nonce:    nonce,
+		Format:   format,
+		Callback: cb,
+	}
+	if err := s.refresh.Save(ctx, token, rec); err != nil {
+		return "", fmt.Errorf("persist refresh token: %w", err)
+	}
+	return token, nil
 }
 
 // resolveCallback applies the callback precedence: the first configured callback
