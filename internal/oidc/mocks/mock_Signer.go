@@ -73,7 +73,7 @@ type Signer_Sign_Call struct {
 //   - ctx context.Context
 //   - id oidc.IssuerID
 //   - tok oidc.Token
-func (_e *Signer_Expecter) Sign(ctx interface{}, id interface{}, tok interface{}) *Signer_Sign_Call {
+func (_e *Signer_Expecter) Sign(ctx any, id any, tok any) *Signer_Sign_Call {
 	return &Signer_Sign_Call{Call: _e.mock.On("Sign", ctx, id, tok)}
 }
 

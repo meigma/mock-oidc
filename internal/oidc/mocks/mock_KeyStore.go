@@ -72,7 +72,7 @@ type KeyStore_PublicKeys_Call struct {
 // PublicKeys is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id oidc.IssuerID
-func (_e *KeyStore_Expecter) PublicKeys(ctx interface{}, id interface{}) *KeyStore_PublicKeys_Call {
+func (_e *KeyStore_Expecter) PublicKeys(ctx any, id any) *KeyStore_PublicKeys_Call {
 	return &KeyStore_PublicKeys_Call{Call: _e.mock.On("PublicKeys", ctx, id)}
 }
 
@@ -138,7 +138,7 @@ type KeyStore_SigningKey_Call struct {
 // SigningKey is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id oidc.IssuerID
-func (_e *KeyStore_Expecter) SigningKey(ctx interface{}, id interface{}) *KeyStore_SigningKey_Call {
+func (_e *KeyStore_Expecter) SigningKey(ctx any, id any) *KeyStore_SigningKey_Call {
 	return &KeyStore_SigningKey_Call{Call: _e.mock.On("SigningKey", ctx, id)}
 }
 

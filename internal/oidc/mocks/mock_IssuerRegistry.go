@@ -73,7 +73,7 @@ type IssuerRegistry_Known_Call struct {
 
 // Known is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *IssuerRegistry_Expecter) Known(ctx interface{}) *IssuerRegistry_Known_Call {
+func (_e *IssuerRegistry_Expecter) Known(ctx any) *IssuerRegistry_Known_Call {
 	return &IssuerRegistry_Known_Call{Call: _e.mock.On("Known", ctx)}
 }
 
@@ -134,7 +134,7 @@ type IssuerRegistry_Materialize_Call struct {
 // Materialize is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id oidc.IssuerID
-func (_e *IssuerRegistry_Expecter) Materialize(ctx interface{}, id interface{}) *IssuerRegistry_Materialize_Call {
+func (_e *IssuerRegistry_Expecter) Materialize(ctx any, id any) *IssuerRegistry_Materialize_Call {
 	return &IssuerRegistry_Materialize_Call{Call: _e.mock.On("Materialize", ctx, id)}
 }
 
