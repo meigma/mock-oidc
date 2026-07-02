@@ -72,12 +72,13 @@ func toJWKDTO(k oidc.JWK) JWKDTO {
 // zero) still emits only the access-token fields.
 func toTokenResponseDTO(r oidc.TokenResponse) TokenResponseDTO {
 	return TokenResponseDTO{
-		TokenType:    string(r.TokenType),
-		IDToken:      string(r.IDToken),
-		AccessToken:  string(r.AccessToken),
-		RefreshToken: string(r.RefreshToken),
-		ExpiresIn:    int(r.ExpiresIn),
-		Scope:        r.Scope.String(),
+		TokenType:       string(r.TokenType),
+		IssuedTokenType: string(r.IssuedTokenType),
+		IDToken:         string(r.IDToken),
+		AccessToken:     string(r.AccessToken),
+		RefreshToken:    string(r.RefreshToken),
+		ExpiresIn:       int(r.ExpiresIn),
+		Scope:           r.Scope.String(),
 	}
 }
 
