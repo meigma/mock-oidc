@@ -21,6 +21,9 @@ func (a *App) servers() []namedServer {
 	if a.metricsServer != nil {
 		servers = append(servers, namedServer{server: a.metricsServer, name: "metrics server"})
 	}
+	if a.controlServer != nil {
+		servers = append(servers, namedServer{server: a.controlServer, name: "control server"})
+	}
 
 	return servers
 }
