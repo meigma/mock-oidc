@@ -199,9 +199,11 @@ func buildRateLimiter(cfg config.Config, logger *slog.Logger) (*ratelimit.InMemo
 }
 
 // buildRegistrar wires the OIDC hexagon — the mutable clock, the signing
-// adapter, and the in-memory issuer registry — into the provider and token
-// services, and returns the httpapi Registrar that mounts their operations. It
-// is the single OIDC-wiring path shared by New and the server-less OpenAPIYAML.
+// adapter, and the in-memory issuer registry — into the provider, token, and
+// authorize services, and returns the httpapi Registrar that mounts their
+// operations. It is the single OIDC-wiring path shared by New and the server-less
+// OpenAPIYAML. The CodeStore is shared: AuthorizeService writes codes, the
+// TokenService burns them at the authorization_code exchange.
 func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, error) {
 	clock := resolveClock(o)
 	sign, err := resolveSigning(o)
@@ -210,10 +212,23 @@ func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, erro
 	}
 
 	registry := memory.NewIssuerRegistry()
-	provider := oidc.NewProviderService(registry, sign, oidc.WithProviderLogger(logger))
-	tokens := oidc.NewTokenService(registry, sign, sign, clock, oidc.WithTokenLogger(logger))
+	codes := memory.NewCodeStore()
+	refresh := memory.NewRefreshTokenStore()
 
-	return httpapi.Registrar(httpapi.Deps{Provider: provider, Tokens: tokens}), nil
+	provider := oidc.NewProviderService(registry, sign, oidc.WithProviderLogger(logger))
+	tokens := oidc.NewTokenService(registry, sign, sign, clock,
+		oidc.WithTokenLogger(logger),
+		oidc.WithCodeStore(codes),
+		oidc.WithRefreshStore(refresh),
+	)
+	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin)
+
+	return httpapi.Registrar(httpapi.Deps{
+		Provider:  provider,
+		Tokens:    tokens,
+		Authorize: authorize,
+		Logger:    logger,
+	}), nil
 }
 
 // resolveClock returns the injected clock when present; otherwise it derives one

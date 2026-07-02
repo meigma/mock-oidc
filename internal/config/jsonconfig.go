@@ -44,6 +44,12 @@ type Seed struct {
 	// 5-key RSA seed. An ARRAY is accepted, dropping upstream's single-key JSON
 	// limitation.
 	InitialKeys [][]byte
+
+	// InteractiveLogin forces GET /authorize to render the interactive login page
+	// even when the request does not ask for it (via prompt). Absent → false: the
+	// zero-config default auto-issues a code so a stock client's authorize→code→
+	// token flow works without a browser, matching upstream.
+	InteractiveLogin bool
 }
 
 // DefaultSeed is the zero-config seed used when no JSON config is present.
@@ -55,7 +61,8 @@ func DefaultSeed() Seed {
 // are ignored (lenient parity); only the fields mock-oidc honors this slice are
 // declared.
 type document struct {
-	TokenProvider tokenProviderDoc `json:"tokenProvider"`
+	TokenProvider    tokenProviderDoc `json:"tokenProvider"`
+	InteractiveLogin bool             `json:"interactiveLogin"`
 }
 
 type tokenProviderDoc struct {
@@ -141,6 +148,8 @@ func (d document) toSeed() (Seed, error) {
 	for _, k := range d.TokenProvider.KeyProvider.InitialKeys {
 		seed.InitialKeys = append(seed.InitialKeys, []byte(k)) // opaque; parsed by the signing adapter
 	}
+
+	seed.InteractiveLogin = d.InteractiveLogin
 
 	return seed, nil
 }
