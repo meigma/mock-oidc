@@ -25,6 +25,14 @@ const (
 	pathMetrics = "/metrics"
 )
 
+// FallbackWriter renders a transport-level fallback response and reports whether
+// it handled the request. It is the transport-neutral seam the composition root
+// uses to install a resource-specific fallback (for example, the OIDC OAuth2
+// error writer for wrong-method protocol routes) without this package depending
+// on any resource adapter. Returning false leaves the default problem+json
+// fallback in place.
+type FallbackWriter func(w http.ResponseWriter, r *http.Request) bool
+
 // RouterDeps carries the dependencies needed to assemble the HTTP handler.
 type RouterDeps struct {
 	// Logger is the base logger for the recover and access-log middleware.
@@ -40,7 +48,9 @@ type RouterDeps struct {
 	Version string
 	// RequestTimeout bounds per-request processing in the timeout middleware.
 	RequestTimeout time.Duration
-	// CORSAllowedOrigins lists origins for the CORS middleware; empty disables it.
+	// CORSAllowedOrigins tightens the CORS middleware to an allowlist; empty keeps
+	// the default-ON reflect-any-origin behavior (Decision D-3). The middleware is
+	// always installed.
 	CORSAllowedOrigins []string
 	// TrustedProxyHeader names the proxy header to read the client IP from; empty
 	// trusts only the direct TCP peer.
@@ -49,6 +59,14 @@ type RouterDeps struct {
 	Readiness []ReadinessCheck
 	// Register mounts resource operations onto the Huma API.
 	Register Registrar
+	// FallbackWriter is a transport-neutral hook consulted by the non-Huma router
+	// fallbacks (currently the 405 MethodNotAllowed handler) before the default
+	// problem+json response. It renders a resource-specific fallback (for example,
+	// the OIDC OAuth2 error shape on a wrong-method protocol route) and reports
+	// whether it handled the request; returning false leaves the RFC 9457
+	// fallback. The composition root supplies the strategy, so this generic
+	// substrate never imports internal/oidc. Nil keeps the problem+json fallback.
+	FallbackWriter FallbackWriter
 	// Tracing wraps the handler with the OpenTelemetry HTTP server-span
 	// instrumentation (otelhttp) and installs the span-naming Huma middleware.
 	// The infrastructure routes (/healthz, /readyz, /metrics) are filtered out so
@@ -78,15 +96,14 @@ func NewRouter(deps RouterDeps) http.Handler {
 	//
 	// Client-IP runs first so the request id, access log, metrics, and the
 	// rate limiter all see the resolved IP. CORS sits after the access log (so
-	// preflight responses are logged and metered) and is installed only when
-	// origins are configured.
+	// preflight responses are logged and metered) and is always installed: it is
+	// reflect-origin default-ON (Decision D-3), tightening to an allowlist only
+	// when CORSAllowedOrigins is set.
 	mux.Use(middleware.ClientIP(deps.TrustedProxyHeader))
 	mux.Use(chimiddleware.RequestID)
 	mux.Use(middleware.Recoverer(deps.Logger))
 	mux.Use(observability.RequestLogger(deps.Logger))
-	if len(deps.CORSAllowedOrigins) > 0 {
-		mux.Use(middleware.CORS(deps.CORSAllowedOrigins))
-	}
+	mux.Use(middleware.CORS(deps.CORSAllowedOrigins))
 	mux.Use(deps.Metrics.Middleware())
 	mux.Use(middleware.Timeout(deps.RequestTimeout))
 
@@ -100,6 +117,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 		// the Allow header (required on a 405 by RFC 9110) by probing the routes.
 		if allow := allowedMethods(mux, r.URL.Path); allow != "" {
 			w.Header().Set("Allow", allow)
+		}
+		// Give the composition root's strategy first refusal so wrong-method
+		// protocol routes (for example, GET /{issuer}/token) render the uniform
+		// OAuth2 error shape instead of RFC 9457, without this package importing
+		// the OIDC adapter.
+		if deps.FallbackWriter != nil && deps.FallbackWriter(w, r) {
+			return
 		}
 		problem.Write(w, http.StatusMethodNotAllowed, "the method is not allowed for this resource")
 	})

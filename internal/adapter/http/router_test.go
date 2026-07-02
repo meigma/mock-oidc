@@ -221,6 +221,49 @@ func TestNotFoundReturnsProblemJSON(t *testing.T) {
 	assert.Contains(t, resp.body, `"status":404`)
 }
 
+// TestFallbackWriterHandles405 verifies the transport-neutral FallbackWriter seam
+// is consulted on a MethodNotAllowed before the default problem+json fallback: a
+// strategy returning true fully owns the response.
+func TestFallbackWriterHandles405(t *testing.T) {
+	t.Parallel()
+
+	discard := observability.NewLogger(io.Discard, slog.LevelError, "json")
+	var called bool
+	handler := NewRouter(RouterDeps{
+		Logger:         discard,
+		Metrics:        observability.NewMetrics(),
+		Version:        "test",
+		RequestTimeout: testRequestTimeout,
+		Register:       nil,
+		FallbackWriter: func(w http.ResponseWriter, _ *http.Request) bool {
+			called = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":"custom"}`))
+			return true
+		},
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	// POST /healthz matches the GET-only infra route, so the router's
+	// MethodNotAllowed handler runs and consults the FallbackWriter.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/healthz", nil)
+	require.NoError(t, err)
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.True(t, called, "FallbackWriter should be consulted on a 405")
+	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+	assert.JSONEq(t, `{"error":"custom"}`, string(data))
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+}
+
 type testResponse struct {
 	status      int
 	body        string
@@ -248,7 +291,8 @@ func get(t *testing.T, srv *httptest.Server, path string) testResponse {
 }
 
 // TestCORSPreflightAllowsConfiguredOrigin verifies a preflight against a
-// configured origin returns the allow-origin and Vary headers.
+// configured origin reflects that origin, sets credentials true, advertises the
+// fixed method set, echoes the requested headers, and answers 204 (Decision D-3).
 func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
 	t.Parallel()
 
@@ -258,25 +302,52 @@ func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
 	require.NoError(t, err)
 	req.Header.Set("Origin", "https://app.example")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	req.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")
 
 	resp, err := srv.Client().Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 	assert.Equal(t, "https://app.example", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
+	assert.Equal(t, "POST, GET, OPTIONS", resp.Header.Get("Access-Control-Allow-Methods"))
+	assert.Equal(t, "Authorization, Content-Type", resp.Header.Get("Access-Control-Allow-Headers"))
 	assert.Contains(t, resp.Header.Get("Vary"), "Origin")
 }
 
-// TestCORSDisabledByDefault verifies that with no configured origins the server
-// emits no CORS headers at all (the safe template default).
-func TestCORSDisabledByDefault(t *testing.T) {
+// TestCORSDefaultOnReflectsOrigin verifies the default-ON reflect-origin policy
+// (Decision D-3): with no configured allowlist, any request Origin is reflected
+// back with credentials enabled — never the "*" wildcard — so a browser client
+// works with zero configuration.
+func TestCORSDefaultOnReflectsOrigin(t *testing.T) {
 	t.Parallel()
 
 	srv := corsTestServer(t, nil)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/healthz", nil)
 	require.NoError(t, err)
-	req.Header.Set("Origin", "https://app.example")
+	req.Header.Set("Origin", "https://spa.example")
+
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, "https://spa.example", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
+	assert.Contains(t, resp.Header.Get("Vary"), "Origin")
+}
+
+// TestCORSAllowlistTightens verifies a configured allowlist rejects origins
+// outside it: no CORS headers are emitted for a disallowed origin.
+func TestCORSAllowlistTightens(t *testing.T) {
+	t.Parallel()
+
+	srv := corsTestServer(t, []string{"https://app.example"})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/healthz", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.example")
 
 	resp, err := srv.Client().Do(req)
 	require.NoError(t, err)
