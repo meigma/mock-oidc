@@ -67,15 +67,39 @@ type CodeStore interface {
 	Take(ctx context.Context, code AuthorizationCode) (CodeRecord, error)
 }
 
-// RefreshTokenStore persists issued refresh tokens for later redemption. Slice 2
-// only SAVES a RefreshRecord under a freshly minted refresh token so the
-// authorization_code exchange can return it; redemption (lookup, rotation, and
-// the cross-issuer check) lands in Slice 3. Implementations must be
-// concurrency-safe.
+// RefreshTokenStore persists issued refresh tokens for later redemption. It is
+// PERSIST-ONLY: the domain service mints the token value and decides its form
+// (bare UUID, or the unsigned alg=none PlainJWT form when a nonce is present),
+// and the signing adapter produces any compact bytes — the store never mints.
+// The service enforces issuer binding: a token minted by issuer A and presented
+// to B is rejected with the corrected cross-issuer text after Lookup, so Lookup
+// returns the record bound to a token regardless of the presented issuer.
+// Implementations must be concurrency-safe.
 type RefreshTokenStore interface {
-	// Save stores rec under token, overwriting any prior record for the same
-	// token.
-	Save(ctx context.Context, token RefreshToken, rec RefreshRecord) error
+	// Save persists rec (bound callback + nonce) under tok for issuer,
+	// overwriting any prior record for the same token.
+	Save(ctx context.Context, issuer IssuerID, tok RefreshToken, rec RefreshRecord) error
+	// Lookup returns the record bound to tok. A miss returns a non-nil sentinel
+	// the service maps to invalid_grant.
+	Lookup(ctx context.Context, issuer IssuerID, tok RefreshToken) (RefreshRecord, error)
+	// Remove invalidates tok (revoke / rotation). Removing an absent token is a
+	// no-op so revoke is idempotent.
+	Remove(ctx context.Context, tok RefreshToken) error
+}
+
+// TokenVerifier verifies a signed JWT against an issuer and returns its claims.
+// It backs /userinfo and /introspect. now threads the SAME freezable Clock as
+// issuance so iat/exp are checked against one time base — a control-plane clock
+// advance moves both issuance and verification. Verification pins the alg to the
+// resolved key's algorithm (alg-confusion guard, alg=none rejected), matches iss
+// to the resolved issuer, and accepts typ=JWT and typ=at+jwt (RFC 9068, Decision
+// D-4), rejecting any other typ. A failure is a typed error the service maps to
+// invalid_token (/userinfo) or {active:false} (/introspect). Only the signing
+// adapter satisfies this port (it is the sole JOSE importer).
+type TokenVerifier interface {
+	// Verify checks signature, issuer, typ, iat and exp, returning the parsed
+	// ClaimSet on success or a typed error on failure.
+	Verify(ctx context.Context, issuer IssuerID, token SignedToken, now Instant) (ClaimSet, error)
 }
 
 // issuerResolver assembles the per-request Issuer aggregate from the registry

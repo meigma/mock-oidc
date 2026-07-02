@@ -57,8 +57,8 @@ func newAuthCodeService(t *testing.T, now oidc.Instant, capt *authCodeCapture) (
 	refresh := mocks.NewRefreshTokenStore(t)
 
 	// A refresh record is persisted on every successful exchange; capture it.
-	refresh.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, _ oidc.RefreshToken, rec oidc.RefreshRecord) {
+	refresh.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ oidc.IssuerID, _ oidc.RefreshToken, rec oidc.RefreshRecord) {
 			capt.sawRefresh = true
 			capt.savedRefresh = rec
 		}).Return(nil).Maybe()
@@ -172,8 +172,10 @@ func TestAuthorizationCodeRefreshFormatNoNonce(t *testing.T) {
 
 	var savedFormat oidc.RefreshFormat
 	refresh := mocks.NewRefreshTokenStore(t)
-	refresh.EXPECT().Save(mock.Anything, oidc.RefreshToken("refresh-uuid"), mock.Anything).
-		Run(func(_ context.Context, _ oidc.RefreshToken, rec oidc.RefreshRecord) { savedFormat = rec.Format }).
+	refresh.EXPECT().Save(mock.Anything, mock.Anything, oidc.RefreshToken("refresh-uuid"), mock.Anything).
+		Run(func(_ context.Context, _ oidc.IssuerID, _ oidc.RefreshToken, rec oidc.RefreshRecord) {
+			savedFormat = rec.Format
+		}).
 		Return(nil)
 
 	codes := mocks.NewCodeStore(t)

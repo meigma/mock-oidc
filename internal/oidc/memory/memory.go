@@ -100,10 +100,19 @@ func (s *CodeStore) Take(_ context.Context, code oidc.AuthorizationCode) (oidc.C
 	return rec, nil
 }
 
-// RefreshTokenStore is the in-memory, persist-only [oidc.RefreshTokenStore]:
-// Slice 2 saves a RefreshRecord under each minted refresh token so the
-// authorization_code exchange can return it; redemption arrives in Slice 3. It
-// is concurrency-safe under a Mutex.
+// ErrRefreshTokenNotFound is the sentinel RefreshTokenStore.Lookup returns for an
+// unknown or already-removed refresh token. The token service maps it to
+// invalid_grant; callers match it with [errors.Is].
+var ErrRefreshTokenNotFound = errors.New("refresh token not found")
+
+// RefreshTokenStore is the in-memory, persist-only [oidc.RefreshTokenStore]: it
+// saves a RefreshRecord under each minted refresh token so the
+// authorization_code exchange returns it and the refresh grant later redeems it.
+// It is unbounded with no TTL (parity) and concurrency-safe under a Mutex. The
+// issuer argument is carried by the port for the service's binding check; the
+// map keys by token alone so a cross-issuer presentation still resolves the
+// record (the service compares the record's issuer and raises the corrected
+// text) rather than silently missing.
 type RefreshTokenStore struct {
 	mu      sync.Mutex
 	records map[oidc.RefreshToken]oidc.RefreshRecord
@@ -114,10 +123,41 @@ func NewRefreshTokenStore() *RefreshTokenStore {
 	return &RefreshTokenStore{records: make(map[oidc.RefreshToken]oidc.RefreshRecord)}
 }
 
-// Save stores rec under token, overwriting any prior record for the same token.
-func (s *RefreshTokenStore) Save(_ context.Context, token oidc.RefreshToken, rec oidc.RefreshRecord) error {
+// Save stores rec under tok, overwriting any prior record for the same token.
+func (s *RefreshTokenStore) Save(
+	_ context.Context,
+	_ oidc.IssuerID,
+	tok oidc.RefreshToken,
+	rec oidc.RefreshRecord,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.records[token] = rec
+	s.records[tok] = rec
+	return nil
+}
+
+// Lookup returns the record bound to tok, or [ErrRefreshTokenNotFound] when
+// absent. It resolves by token regardless of the presented issuer so the service
+// can raise the corrected cross-issuer text rather than a bare not-found.
+func (s *RefreshTokenStore) Lookup(
+	_ context.Context,
+	_ oidc.IssuerID,
+	tok oidc.RefreshToken,
+) (oidc.RefreshRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.records[tok]
+	if !ok {
+		return oidc.RefreshRecord{}, ErrRefreshTokenNotFound
+	}
+	return rec, nil
+}
+
+// Remove invalidates tok. Removing an absent token is a no-op so revocation and
+// rotation are idempotent.
+func (s *RefreshTokenStore) Remove(_ context.Context, tok oidc.RefreshToken) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.records, tok)
 	return nil
 }

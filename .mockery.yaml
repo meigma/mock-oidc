@@ -26,3 +26,4 @@ packages:
       IssuerRegistry:
       CodeStore:
       RefreshTokenStore:
+      TokenVerifier:

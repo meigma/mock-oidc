@@ -306,7 +306,7 @@ func (s *TokenService) issueRefresh(
 		Format:   format,
 		Callback: cb,
 	}
-	if err := s.refresh.Save(ctx, token, rec); err != nil {
+	if err := s.refresh.Save(ctx, issuer.ID, token, rec); err != nil {
 		return "", fmt.Errorf("persist refresh token: %w", err)
 	}
 	return token, nil
