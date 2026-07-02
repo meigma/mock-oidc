@@ -1,5 +1,7 @@
 package oidc
 
+import "strings"
+
 // Subject is the token `sub`. It is a distinct type from ClientID so the
 // catalog's subject-resolution rules (cc -> client_id, password -> username,
 // login -> username) are explicit conversions, never accidental assignments.
@@ -40,4 +42,26 @@ func (c Client) RequireClientID() (ClientID, error) {
 		return "", InvalidClient("client_id cannot be null")
 	}
 	return c.ID, nil
+}
+
+// LoginSubmission is the parsed interactive-login POST: a required username (the
+// subject) plus optional, free-form claims supplied as JSON. The adapter parses
+// the form and the claims JSON before this value is constructed; invalid claims
+// JSON is dropped at the edge (warned, not fatal) so the domain only ever sees a
+// well-formed, possibly-empty claim set. Login claims are merged add-only
+// (putIfAbsent) at mint time, so a mapping/registered claim always wins.
+type LoginSubmission struct {
+	Username Subject
+	Claims   CustomClaims
+}
+
+// NewLoginSubmission validates the required username. A blank (or whitespace-
+// only) username is MissingParameter("username") — a *ProtocolError
+// (invalid_request, 400), not a bare sentinel — so the login POST fails as a
+// correctly-typed protocol error.
+func NewLoginSubmission(username string, claims CustomClaims) (LoginSubmission, error) {
+	if strings.TrimSpace(username) == "" {
+		return LoginSubmission{}, MissingParameter("username")
+	}
+	return LoginSubmission{Username: Subject(username), Claims: claims}, nil
 }

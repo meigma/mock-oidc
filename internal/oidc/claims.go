@@ -186,3 +186,39 @@ type ClaimSet struct {
 	Scope     Scopes
 	Custom    CustomClaims
 }
+
+// clone returns a deep copy of the claim set whose mutable containers (Custom
+// map, Audience/Scope slices) are fresh, so a copy can be mutated without
+// aliasing the receiver. The pointer-optional claims are replaced wholesale by
+// the With* methods, so they are not deep-copied here.
+func (c ClaimSet) clone() ClaimSet {
+	out := c
+	out.Custom = c.Custom.Clone()
+	if c.Audience != nil {
+		out.Audience = slices.Clone(c.Audience)
+	}
+	if c.Scope != nil {
+		out.Scope = slices.Clone(c.Scope)
+	}
+	return out
+}
+
+// WithNonce returns a fresh ClaimSet with the nonce set (or cleared when n is
+// nil). It is copy-on-write: the receiver is unchanged and the copy shares no
+// backing map, so the id-token and access-token claim sets built from one
+// defaultClaims value never alias each other.
+func (c ClaimSet) WithNonce(n *Nonce) ClaimSet {
+	out := c.clone()
+	out.Nonce = n
+	return out
+}
+
+// WithAZP returns a fresh ClaimSet stamped with the authorized-party claim (azp,
+// set only on the id_token of an authorization_code exchange). It is
+// copy-on-write; the stored pointer is the copy's own, never the caller's.
+func (c ClaimSet) WithAZP(client ClientID) ClaimSet {
+	out := c.clone()
+	azp := client
+	out.Azp = &azp
+	return out
+}
