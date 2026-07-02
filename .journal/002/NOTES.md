@@ -222,3 +222,13 @@ Open threads:
   https://github.com/meigma/mock-oidc/pull/11
 - Next: merge PR #11 → tick Slice 3 boxes → Slice 4 (delegation & legacy grants:
   token-exchange, jwt-bearer, password, private_key_jwt client assertions).
+
+## 2026-07-02 12:05 — PR #11 merged; Slice 4 starting
+- PR #11 squash-merged → master@813d1ff (CI green). Cleanup done; 35 Slice 3
+  boxes ticked + DONE line.
+- Slice 4 starting: worktree feat/slice-4-delegation-grants off master@813d1ff.
+  3-stage workflow (domain+services+ParseUnverified seam → httpapi decode arms +
+  R2 → R3 + gates). Known plan gap flagged to agents: the R3 callback-audience
+  precedence case needs a configured issuer callback, but seed callback parsing
+  is an S5 deliverable — cover case (a) live on the container, case (b) at R2
+  with an in-process configured callback, and document the S5 deferral.
