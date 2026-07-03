@@ -1,0 +1,49 @@
+<!doctype html>
+<!--
+  callback.html — OAuth authorize/logout landing page.
+  Parses query + fragment, renders them, postMessages to an opener when present,
+  and always records the params in sessionStorage. The script is inline and
+  import-free so it also works when merely fetched (fetch does not run scripts,
+  but the console reads params off response.url; a real browser navigation runs
+  this and posts back to the opener).
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>webtest callback</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; color-scheme: light dark; padding: 1rem; }
+  pre { padding: .6rem; border: 1px solid gray; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+</style>
+
+<h1>webtest callback</h1>
+<p>This page received an OAuth redirect. Parameters below.</p>
+<pre id="out">(none)</pre>
+
+<script type="module">
+  function parse(str) {
+    const out = {};
+    const s = str.replace(/^[?#]/, '');
+    if (!s) return out;
+    for (const [k, v] of new URLSearchParams(s)) out[k] = v;
+    return out;
+  }
+
+  const params = { ...parse(location.search), ...parse(location.hash) };
+
+  document.getElementById('out').textContent =
+    Object.keys(params).length ? JSON.stringify(params, null, 2) : '(no query or fragment params)';
+
+  try {
+    sessionStorage.setItem('webtest:callback:last', JSON.stringify(params));
+  } catch {
+    // storage may be unavailable
+  }
+
+  if (window.opener) {
+    try {
+      window.opener.postMessage({ type: 'webtest-callback', params }, '*');
+    } catch {
+      // opener may be cross-origin/closed
+    }
+  }
+</script>
