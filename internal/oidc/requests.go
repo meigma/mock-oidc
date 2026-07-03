@@ -38,6 +38,12 @@ type TokenRequest struct {
 	SubjectToken     SignedToken
 	SubjectTokenType string
 	Audience         Audience
+
+	// Params is the multi-valued form view the httpapi edge attaches via WithParams
+	// (from the raw url-encoded body) so a RequestMappingCallback can match and
+	// ${...}-template against arbitrary request params. It is nil for grants/edges
+	// that do not thread it, in which case only client_id/subject resolve.
+	Params FormParams
 }
 
 // NewTokenRequest builds a TokenRequest for the given issuer, grant, and client.
@@ -49,6 +55,14 @@ func NewTokenRequest(issuer IssuerID, grant GrantType, client Client) TokenReque
 // WithScopes returns a copy of the request carrying the parsed scopes.
 func (r TokenRequest) WithScopes(s Scopes) TokenRequest {
 	r.Scopes = s
+	return r
+}
+
+// WithParams returns a copy of the request carrying the multi-valued form params
+// the httpapi edge parsed from the raw body, so request-mapping matching and
+// ${...} templating see every submitted param (not just the grant-specific ones).
+func (r TokenRequest) WithParams(p FormParams) TokenRequest {
+	r.Params = p
 	return r
 }
 
@@ -123,7 +137,7 @@ func (r TokenRequest) CallbackInput() CallbackInput {
 		Client:   r.Client,
 		Scopes:   r.Scopes,
 		Subject:  r.Username,
-		Params:   nil,
+		Params:   r.Params,
 		Audience: r.Audience,
 	}
 }

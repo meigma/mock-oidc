@@ -216,7 +216,7 @@ func decodeClientAuth(authz string, f FlatForm) oidc.Client {
 	if id, ok := basicAuthClientID(authz); ok {
 		return oidc.Client{ID: oidc.ClientID(id), Auth: oidc.ClientAuthClientSecretBasic}
 	}
-	id := oidc.ClientID(f.Get("client_id"))
+	id := oidc.ClientID(f.Get(clientIDParam))
 	// private_key_jwt: carry the raw client_assertion inward so the token-exchange
 	// path can parse (unverified) and structurally validate it. The assertion's
 	// own iss/sub carry the effective client_id, so a public client_id is optional.

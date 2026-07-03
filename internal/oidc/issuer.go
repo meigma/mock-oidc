@@ -129,6 +129,40 @@ func (b BaseURL) IssuerURL(id IssuerID) string {
 	return b.String() + "/" + string(id)
 }
 
+// ParseBaseURL parses a full URL string into a host-root BaseURL — the mint
+// `anyToken` override, where a test signs a token for an arbitrary external `iss`
+// with this server's keys. It accepts scheme://host[:port] with an optional
+// trailing path (dropped — BaseURL is host-root only) and parses with string ops
+// only (net/url is banned in the core; IPv6 literals are the documented parity
+// gap, not supported). A missing scheme, empty host, or non-numeric port is a
+// wrapped ErrInvalidBaseURL / ErrInvalidScheme so the control edge maps it to a
+// 422 rather than crashing.
+func ParseBaseURL(raw string) (BaseURL, error) {
+	schemePart, rest, found := strings.Cut(raw, "://")
+	if !found {
+		return BaseURL{}, fmt.Errorf("%w: %q is missing a scheme", ErrInvalidBaseURL, raw)
+	}
+	scheme, err := ParseURLScheme(schemePart)
+	if err != nil {
+		return BaseURL{}, err
+	}
+	authority := rest
+	if i := strings.IndexByte(authority, '/'); i >= 0 {
+		authority = authority[:i] // drop any path/query/fragment — host root only
+	}
+	host := authority
+	port := 0
+	if i := strings.LastIndexByte(authority, ':'); i >= 0 {
+		p, convErr := strconv.Atoi(authority[i+1:])
+		if convErr != nil {
+			return BaseURL{}, fmt.Errorf("%w: port in %q: %w", ErrInvalidBaseURL, raw, convErr)
+		}
+		host = authority[:i]
+		port = p
+	}
+	return NewBaseURL(scheme, host, port)
+}
+
 // RequestOrigin carries the already-extracted candidate address components for
 // base-URL resolution. The transport edge (httpapi) parses Host / X-Forwarded-*
 // with net/url and fills this; the domain only applies precedence.

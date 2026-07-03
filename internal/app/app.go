@@ -19,6 +19,7 @@ import (
 	"github.com/meigma/mock-oidc/internal/config"
 	"github.com/meigma/mock-oidc/internal/observability"
 	"github.com/meigma/mock-oidc/internal/oidc"
+	"github.com/meigma/mock-oidc/internal/oidc/controlapi"
 	"github.com/meigma/mock-oidc/internal/oidc/httpapi"
 	"github.com/meigma/mock-oidc/internal/oidc/memory"
 	"github.com/meigma/mock-oidc/internal/oidc/signing"
@@ -42,6 +43,10 @@ const bootBanner = "mock-oidc is FOR TESTING ONLY: it issues signed tokens for a
 type App struct {
 	server        *http.Server
 	metricsServer *http.Server
+	// controlServer serves the /_mock control plane on its own listener when
+	// ControlAddr is set (dedicated-listener mode). It is nil when the control
+	// plane is co-located on the API listener or disabled.
+	controlServer *http.Server
 	logger        *slog.Logger
 	grace         time.Duration
 	// rateLimiter is the in-process rate limiter whose janitor goroutine is
@@ -104,13 +109,29 @@ func New(
 
 	logger.WarnContext(ctx, bootBanner)
 
-	// Build the OIDC hexagon over the in-memory + signing adapters. Signing
-	// construction parses the seed's keys and validates the algorithm, so it is
-	// the one fallible OIDC wiring step.
-	registrar, err := buildRegistrar(o, logger)
+	// Build the OIDC hexagon over the in-memory + signing adapters, plus the shared
+	// recorder/queue/clock the control plane also drives. Signing construction parses
+	// the seed's keys and validates the algorithm, so it is the one fallible step.
+	// cfg.Addr is threaded through so the debugger's back-channel /token exchange can
+	// loopback-dial this server's own listener (port-remap safe).
+	w, err := buildWiring(o, logger, cfg.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("init signing: %w", err)
 	}
+
+	// The control plane requires a steerable clock (freeze/advance, and reset
+	// unfreezes it). When a caller injects a clock that is not a ClockController,
+	// buildWiring leaves controlDeps.Clock nil; disable the control plane entirely
+	// rather than register clock/reset handlers that would nil-panic on use.
+	if cfg.ControlEnabled && w.controlDeps.Clock == nil {
+		logger.WarnContext(ctx,
+			"control plane disabled: the injected clock does not implement ClockController (not steerable)")
+		cfg.ControlEnabled = false
+	}
+
+	// The control plane is co-located on the API listener when enabled with no
+	// dedicated ControlAddr; a non-empty ControlAddr moves it to its own listener.
+	coLocated := cfg.ControlEnabled && cfg.ControlAddr == ""
 
 	metrics := observability.NewMetrics()
 
@@ -130,7 +151,19 @@ func New(
 	// An empty metrics-addr co-locates /metrics on the API listener; otherwise a
 	// dedicated metrics server (below) serves it off the API surface.
 	serveMetricsInline := cfg.MetricsAddr == ""
-	handler := adapterhttp.NewRouter(adapterhttp.RouterDeps{
+
+	// The main API mounts the OIDC protocol operations, and — when the control plane
+	// is co-located — the /_mock operations on the SAME Huma API (Register applies
+	// the reserved prefix itself; the base API must not be pre-wrapped).
+	register := func(api huma.API) {
+		w.registerOIDC(api)
+		if coLocated {
+			controlapi.Register(api, w.controlDeps)
+			stampControlSecurity(api, cfg.ControlToken)
+		}
+	}
+
+	router := adapterhttp.NewRouter(adapterhttp.RouterDeps{
 		Logger:               logger,
 		Metrics:              metrics,
 		ServeMetricsEndpoint: serveMetricsInline,
@@ -141,7 +174,7 @@ func New(
 		// No DB ⇒ no readiness checks ⇒ /readyz is unconditionally ready.
 		Readiness: nil,
 		// Mount the OIDC protocol operations (discovery, JWKS, token) built above.
-		Register: registrar,
+		Register: register,
 		// Render wrong-method protocol routes (for example GET /{issuer}/token) as
 		// the uniform OAuth2 error shape instead of RFC 9457, without the generic
 		// transport substrate importing internal/oidc.
@@ -150,35 +183,63 @@ func New(
 		InstallRateLimit: installRateLimit,
 	})
 
-	server := &http.Server{
-		Addr:              cfg.Addr,
+	// Mux-level request recording wraps the whole handler; it path-guards to the
+	// protocol families, so /_mock and the infra routes are never recorded — the
+	// control plane can never observe itself. It is installed ONLY when the control
+	// plane is enabled: recording exists solely to serve the control plane's
+	// takeRequest/requests inspection, so with control off it would buffer bodies
+	// into a log nothing can read or drain. When co-located, the control gate +
+	// testing-only header wrap outermost, scoped to /_mock.
+	handler := router
+	if cfg.ControlEnabled {
+		handler = httpapi.RecordRequests(w.recorder)(handler)
+	}
+	if coLocated {
+		handler = controlScope(cfg.ControlToken)(handler)
+	}
+
+	server := newHTTPServer(cfg, cfg.Addr, handler)
+
+	var metricsServer *http.Server
+	if !serveMetricsInline {
+		metricsServer = newHTTPServer(cfg, cfg.MetricsAddr, adapterhttp.NewMetricsHandler(metrics))
+	}
+
+	// Dedicated-listener mode: the /_mock plane gets its own server (no recording
+	// middleware), mirroring the metrics listener. The API listener then carries no
+	// /_mock routes at all.
+	var controlServer *http.Server
+	if cfg.ControlEnabled && cfg.ControlAddr != "" {
+		controlServer = newControlServer(cfg, version, w.controlDeps)
+	}
+
+	if cfg.ControlEnabled {
+		logControlRoutes(ctx, logger, cfg)
+	}
+
+	return &App{
+		server:        server,
+		metricsServer: metricsServer,
+		controlServer: controlServer,
+		logger:        logger,
+		grace:         cfg.ShutdownGrace,
+		rateLimiter:   rateLimiter,
+		traceShutdown: traceShutdown,
+	}, nil
+}
+
+// newHTTPServer builds an [http.Server] for addr with handler, applying the shared
+// read/write/idle timeouts from cfg. It is the one place the API, metrics, and
+// control listeners get identical, consistent timeout hardening.
+func newHTTPServer(cfg config.Config, addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
 		Handler:           handler,
 		ReadTimeout:       cfg.ReadTimeout,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
-
-	var metricsServer *http.Server
-	if !serveMetricsInline {
-		metricsServer = &http.Server{
-			Addr:              cfg.MetricsAddr,
-			Handler:           adapterhttp.NewMetricsHandler(metrics),
-			ReadTimeout:       cfg.ReadTimeout,
-			ReadHeaderTimeout: cfg.ReadHeaderTimeout,
-			WriteTimeout:      cfg.WriteTimeout,
-			IdleTimeout:       cfg.IdleTimeout,
-		}
-	}
-
-	return &App{
-		server:        server,
-		metricsServer: metricsServer,
-		logger:        logger,
-		grace:         cfg.ShutdownGrace,
-		rateLimiter:   rateLimiter,
-		traceShutdown: traceShutdown,
-	}, nil
 }
 
 // buildRateLimiter constructs the rate limiter and the hook that installs the
@@ -200,22 +261,44 @@ func buildRateLimiter(cfg config.Config, logger *slog.Logger) (*ratelimit.InMemo
 	return limiter, install
 }
 
-// buildRegistrar wires the OIDC hexagon — the mutable clock, the signing
-// adapter, and the in-memory issuer registry — into the provider, token, and
-// authorize services, and returns the httpapi Registrar that mounts their
-// operations. It is the single OIDC-wiring path shared by New and the server-less
-// OpenAPIYAML. The CodeStore is shared: AuthorizeService writes codes, the
-// TokenService burns them at the authorization_code exchange.
-func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, error) {
+// wiring bundles the composed OIDC surface with the shared control-plane
+// collaborators, so New can mount the protocol operations, wrap the
+// request-recording middleware, and hand the same recorder/queue/clock to the
+// control plane.
+type wiring struct {
+	// registerOIDC mounts the protocol operations (discovery, JWKS, token,
+	// authorize, session, debugger) onto a Huma API.
+	registerOIDC adapterhttp.Registrar
+	// controlDeps are the control-plane collaborators: the token service (mint),
+	// the callback queue (scenarios), the recorder (request log), and the mutable
+	// clock (freeze/advance) — the write facets of the same adapters the OIDC
+	// services read.
+	controlDeps controlapi.Deps
+	// recorder is the request recorder the mux-level RecordRequests middleware
+	// writes to; its RequestLog facet backs the control plane's request inspection.
+	recorder *memory.RequestRecorder
+}
+
+// buildWiring wires the OIDC hexagon — the mutable clock, the signing adapter, and
+// the in-memory issuer registry (seeded with any configured tokenCallbacks) — into
+// the provider, token, authorize, and session services, and builds the shared
+// callback queue and request recorder the control plane also drives. It is the
+// single OIDC-wiring path shared by New and the server-less OpenAPIYAML. The
+// CodeStore is shared: AuthorizeService writes codes, the TokenService burns them
+// at the authorization_code exchange; the CallbackQueue is shared: the control
+// plane enqueues scenarios, the TokenService dequeues them (issuer-matched head).
+func buildWiring(o options, logger *slog.Logger, selfAddr string) (wiring, error) {
 	clock := resolveClock(o)
 	sign, err := resolveSigning(o)
 	if err != nil {
-		return nil, err
+		return wiring{}, err
 	}
 
-	registry := memory.NewIssuerRegistry()
+	registry := memory.NewIssuerRegistry(o.seed.IssuerRecords...)
 	codes := memory.NewCodeStore()
 	refresh := memory.NewRefreshTokenStore()
+	queue := memory.NewCallbackQueue()
+	recorder := memory.NewRequestRecorder()
 
 	provider := oidc.NewProviderService(registry, sign, oidc.WithProviderLogger(logger))
 	tokens := oidc.NewTokenService(registry, sign, sign, clock,
@@ -223,17 +306,36 @@ func buildRegistrar(o options, logger *slog.Logger) (adapterhttp.Registrar, erro
 		oidc.WithCodeStore(codes),
 		oidc.WithRefreshStore(refresh),
 		oidc.WithRefreshRotation(o.seed.RotateRefreshToken),
+		oidc.WithCallbackQueue(queue),
 	)
 	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin)
 	session := oidc.NewSessionService(sign, refresh, clock)
 
-	return httpapi.Registrar(httpapi.Deps{
+	registerOIDC := httpapi.Registrar(httpapi.Deps{
 		Provider:  provider,
 		Tokens:    tokens,
 		Authorize: authorize,
 		Session:   session,
 		Logger:    logger,
-	}), nil
+		SelfAddr:  selfAddr,
+	})
+
+	// The mutable memory.Clock satisfies controlapi.ClockController. A test-injected
+	// clock that does not leaves ctrlClock (and thus controlDeps.Clock) nil; New
+	// detects that and disables the control plane rather than expose clock/reset
+	// handlers that would nil-panic.
+	ctrlClock, _ := clock.(controlapi.ClockController)
+
+	return wiring{
+		registerOIDC: registerOIDC,
+		controlDeps: controlapi.Deps{
+			Tokens:    tokens,
+			Scenarios: queue,
+			Requests:  recorder,
+			Clock:     ctrlClock,
+		},
+		recorder: recorder,
+	}, nil
 }
 
 // resolveClock returns the injected clock when present; otherwise it derives one
@@ -282,18 +384,38 @@ func (a *App) Handler() http.Handler {
 	return a.server.Handler
 }
 
+// ControlHandler returns the dedicated control-plane handler, or nil when the
+// control plane is co-located or disabled. It is primarily for functional tests.
+func (a *App) ControlHandler() http.Handler {
+	if a.controlServer == nil {
+		return nil
+	}
+	return a.controlServer.Handler
+}
+
 // OpenAPIYAML builds the API without binding a listener and returns the
 // OpenAPI 3.0.3 specification as YAML. It registers the OIDC protocol operations
 // (discovery, JWKS, token) through the same Registrar the server uses, so the
 // committed spec matches the running surface. The operations' shapes are
 // seed-independent, so a default seed is used.
 func OpenAPIYAML(version string) ([]byte, error) {
-	registrar, err := buildRegistrar(options{seed: config.DefaultSeed()}, slog.New(slog.DiscardHandler))
+	// Server-less spec build binds no listener, so the debugger self-address is empty
+	// (the origin-derived back-channel target; irrelevant to the emitted schema).
+	w, err := buildWiring(options{seed: config.DefaultSeed()}, slog.New(slog.DiscardHandler), "")
 	if err != nil {
-		return nil, fmt.Errorf("build oidc registrar: %w", err)
+		return nil, fmt.Errorf("build oidc wiring: %w", err)
 	}
 
-	spec, err := adapterhttp.SpecYAML(version, registrar, nil)
+	// The committed spec documents the default surface: control-enabled with no
+	// token, so the /_mock operations appear (tagged Mock Control) but no apiKey
+	// scheme is stamped.
+	register := func(api huma.API) {
+		w.registerOIDC(api)
+		controlapi.Register(api, w.controlDeps)
+		stampControlSecurity(api, "")
+	}
+
+	spec, err := adapterhttp.SpecYAML(version, register, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build openapi spec: %w", err)
 	}

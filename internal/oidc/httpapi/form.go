@@ -1,6 +1,14 @@
 package httpapi
 
-import "net/url"
+import (
+	"net/url"
+
+	"github.com/meigma/mock-oidc/internal/oidc"
+)
+
+// clientIDParam is the OAuth2 client_id form/query parameter name, shared across
+// the token, authorize, and debugger edges.
+const clientIDParam = "client_id"
 
 // FlatForm is the last-wins flat view of an x-www-form-urlencoded body (upstream
 // keyValuesToMap('&')): duplicate keys collapse to the LAST value. It drives
@@ -29,4 +37,17 @@ func parseFormFlat(raw []byte) (FlatForm, error) {
 		out[k] = vs[len(vs)-1] // last wins
 	}
 	return out, nil
+}
+
+// parseFormMulti parses x-www-form-urlencoded bytes into the domain-owned,
+// multi-valued [oidc.FormParams] — the typed replacement for [url.Values] that
+// crosses inward for request-mapping matching and ${...} templating. It converts
+// [url.Values] (a map[string][]string) to FormParams at the edge so [url.Values]
+// itself never reaches the core.
+func parseFormMulti(raw []byte) (oidc.FormParams, error) {
+	vals, err := url.ParseQuery(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	return oidc.FormParams(vals), nil
 }

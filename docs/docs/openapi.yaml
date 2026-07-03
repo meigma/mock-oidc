@@ -1,5 +1,99 @@
 components:
   schemas:
+    AdvanceClockInputBody:
+      additionalProperties: false
+      properties:
+        duration:
+          description: Go duration, e.g. '90s', '5m', '1h'. Advances (and freezes) the clock.
+          type: string
+      required:
+        - duration
+      type: object
+    CapturedRequestDTO:
+      additionalProperties: false
+      properties:
+        body:
+          description: Best-effort UTF-8 decode of the body, for convenience.
+          type: string
+        bodyBase64:
+          description: Raw body bytes, base64 (exact order).
+          type: string
+        headers:
+          additionalProperties:
+            items:
+              type: string
+            nullable: true
+            type: array
+          type: object
+        id:
+          type: string
+        issuer:
+          type: string
+        method:
+          type: string
+        path:
+          type: string
+        query:
+          additionalProperties:
+            items:
+              type: string
+            nullable: true
+            type: array
+          type: object
+        receivedAt:
+          format: date-time
+          type: string
+        url:
+          type: string
+      required:
+        - id
+        - receivedAt
+        - issuer
+        - method
+        - path
+        - url
+      type: object
+    ClearRequestsOutputBody:
+      additionalProperties: false
+      properties:
+        cleared:
+          type: boolean
+      required:
+        - cleared
+      type: object
+    ClearScenariosOutputBody:
+      additionalProperties: false
+      properties:
+        queueDepth:
+          format: int64
+          type: integer
+      required:
+        - queueDepth
+      type: object
+    ClockStateDTO:
+      additionalProperties: false
+      properties:
+        frozen:
+          type: boolean
+        now:
+          format: date-time
+          type: string
+      required:
+        - frozen
+        - now
+      type: object
+    EnqueueScenarioOutputBody:
+      additionalProperties: false
+      properties:
+        queueDepth:
+          format: int64
+          type: integer
+        scenarioId:
+          type: string
+      required:
+        - scenarioId
+        - queueDepth
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -73,6 +167,214 @@ components:
         - kid
         - alg
       type: object
+    ListRequestsOutputBody:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+        requests:
+          items:
+            $ref: "#/components/schemas/CapturedRequestDTO"
+          nullable: true
+          type: array
+      required:
+        - count
+        - requests
+      type: object
+    ListScenariosOutputBody:
+      additionalProperties: false
+      properties:
+        queueDepth:
+          format: int64
+          type: integer
+        scenarios:
+          items:
+            $ref: "#/components/schemas/ScenarioSummaryDTO"
+          nullable: true
+          type: array
+      required:
+        - queueDepth
+        - scenarios
+      type: object
+    MintRequestDTO:
+      additionalProperties: false
+      properties:
+        audience:
+          description: aud claim. Omitted -> no audience is stamped.
+          items:
+            type: string
+          nullable: true
+          type: array
+        claims:
+          additionalProperties: {}
+          description: Additional/overriding claims.
+          type: object
+        clientId:
+          default: default
+          type: string
+        expirySeconds:
+          default: 3600
+          format: int64
+          type: integer
+        issuer:
+          default: default
+          description: Issuer id (first segment); '_mock' reserved.
+          type: string
+        issuerUrl:
+          description: Override iss with an arbitrary URL (anyToken).
+          type: string
+        kind:
+          default: access_token
+          enum:
+            - access_token
+            - id_token
+          type: string
+        scope:
+          items:
+            type: string
+          nullable: true
+          type: array
+        subject:
+          description: sub claim; defaults to a random UUID.
+          type: string
+        typ:
+          default: JWT
+          description: JWS typ header (open JOSEType; at+jwt accepted).
+          type: string
+      required:
+        - issuer
+      type: object
+    MintTokenOutputBody:
+      additionalProperties: false
+      properties:
+        algorithm:
+          type: string
+        claims:
+          additionalProperties: {}
+          description: Decoded claim set (convenience).
+          type: object
+        expiresAt:
+          format: date-time
+          type: string
+        issuer:
+          description: Resolved iss.
+          type: string
+        kid:
+          type: string
+        token:
+          description: Compact signed JWT.
+          type: string
+      required:
+        - token
+        - kid
+        - algorithm
+        - issuer
+        - expiresAt
+        - claims
+      type: object
+    RequestMappingDTO:
+      additionalProperties: false
+      properties:
+        claims:
+          additionalProperties: {}
+          description: ${...}-templated claims applied when this mapping matches.
+          type: object
+        match:
+          description: "'*' (any present value), an exact string, or a full-match regex."
+          type: string
+        param:
+          description: Form/synthetic param name to test (e.g. client_id, scope, subject).
+          type: string
+        typeHeader:
+          description: Overrides the JWS typ when this mapping matches.
+          type: string
+      required:
+        - param
+        - match
+      type: object
+    ResetOutputBody:
+      additionalProperties: false
+      properties:
+        reset:
+          type: boolean
+      required:
+        - reset
+      type: object
+    ScenarioDTO:
+      additionalProperties: false
+      properties:
+        audience:
+          items:
+            type: string
+          nullable: true
+          type: array
+        claims:
+          additionalProperties: {}
+          type: object
+        expirySeconds:
+          format: int64
+          type: integer
+        issuer:
+          default: default
+          type: string
+        requestMappings:
+          items:
+            $ref: "#/components/schemas/RequestMappingDTO"
+          nullable: true
+          type: array
+        subject:
+          type: string
+        typ:
+          type: string
+      required:
+        - issuer
+      type: object
+    ScenarioSummaryDTO:
+      additionalProperties: false
+      properties:
+        issuer:
+          type: string
+        kind:
+          description: "'default' or 'requestMapping'."
+          type: string
+      required:
+        - issuer
+        - kind
+      type: object
+    SetClockInputBody:
+      additionalProperties: false
+      properties:
+        frozen:
+          type: boolean
+        instant:
+          description: Required when frozen=true; the fixed 'now'.
+          format: date-time
+          type: string
+      required:
+        - frozen
+      type: object
+    TakeRequestInputBody:
+      additionalProperties: false
+      properties:
+        endpoint:
+          enum:
+            - authorize
+            - token
+            - userinfo
+            - introspect
+            - revoke
+            - endsession
+            - jwks
+          type: string
+        issuer:
+          type: string
+        timeoutMs:
+          default: 1000
+          description: Max time to wait for a matching request.
+          format: int64
+          type: integer
+      type: object
   securitySchemes:
     oauth2:
       flows:
@@ -88,6 +390,282 @@ info:
   version: dev
 openapi: 3.0.3
 paths:
+  /_mock/clock:
+    get:
+      operationId: mock-get-clock
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClockStateDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get the clock state
+      tags:
+        - Mock Control
+    put:
+      description: frozen=true pins the clock at instant (required); frozen=false returns it to the wall clock. One global clock drives issuance AND verification, so this moves iat/nbf/exp and the verifier alike.
+      operationId: mock-set-clock
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetClockInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClockStateDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Freeze or unfreeze the clock
+      tags:
+        - Mock Control
+  /_mock/clock/advance:
+    post:
+      operationId: mock-advance-clock
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceClockInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClockStateDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Advance the (frozen) clock by a Go duration
+      tags:
+        - Mock Control
+  /_mock/mint:
+    post:
+      description: Signs a token without a grant flow, using the SAME signer/keys as /{issuer}/token, so the result verifies against /{issuer}/jwks. Supply issuerUrl to sign for an arbitrary external iss.
+      operationId: mock-mint
+      parameters:
+        - in: header
+          name: Host
+          schema:
+            type: string
+        - in: header
+          name: X-Forwarded-Proto
+          schema:
+            type: string
+        - in: header
+          name: X-Forwarded-Host
+          schema:
+            type: string
+        - in: header
+          name: X-Forwarded-Port
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MintRequestDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MintTokenOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Directly mint a token (issueToken / anyToken)
+      tags:
+        - Mock Control
+  /_mock/requests:
+    delete:
+      operationId: mock-clear-requests
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearRequestsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Clear the captured-request log
+      tags:
+        - Mock Control
+    get:
+      operationId: mock-list-requests
+      parameters:
+        - explode: false
+          in: query
+          name: issuer
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: endpoint
+          schema:
+            enum:
+              - authorize
+              - token
+              - userinfo
+              - introspect
+              - revoke
+              - endsession
+              - jwks
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRequestsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the captured-request log (non-destructive)
+      tags:
+        - Mock Control
+  /_mock/requests/take:
+    post:
+      description: Long-polls up to timeoutMs for the oldest matching captured request, removes it, and returns it. A miss within the timeout is a clean 404 (not an exception). Raw body bytes are preserved.
+      operationId: mock-take-request
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TakeRequestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapturedRequestDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Destructively take the oldest captured request (takeRequest)
+      tags:
+        - Mock Control
+  /_mock/reset:
+    post:
+      description: Atomically flushes the scenario queue and the request log and unfreezes the clock. It deliberately does NOT drop materialized signing keys, so JWKS a client already fetched stays valid.
+      operationId: mock-reset
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Reset control-plane state (the @AfterEach)
+      tags:
+        - Mock Control
+  /_mock/scenarios:
+    delete:
+      operationId: mock-clear-scenarios
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearScenariosOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Flush the scenario queue
+      tags:
+        - Mock Control
+    get:
+      operationId: mock-list-scenarios
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListScenariosOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the pending scenario queue
+      tags:
+        - Mock Control
+    post:
+      description: Enqueues a single-use, issuer-matched callback consumed by the NEXT matching /token (or refresh) request for that issuer. It does not return a token; it changes how the next real request responds.
+      operationId: mock-enqueue-scenario
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScenarioDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueScenarioOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Enqueue a one-shot scenario (enqueueCallback)
+      tags:
+        - Mock Control
   /favicon.ico:
     get:
       operationId: favicon
@@ -459,6 +1037,207 @@ paths:
       summary: Interactive login submission
       tags:
         - OIDC
+  /{issuer}/debugger:
+    get:
+      operationId: debugger
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: client_id
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: scope
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: subject
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Interactive OIDC debugger (pre-filled authorize form)
+      tags:
+        - OIDC
+    post:
+      operationId: debugger-submit
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                client_id:
+                  type: string
+                scope:
+                  type: string
+                subject:
+                  type: string
+              type: object
+        required: true
+      responses:
+        "302":
+          description: Found
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: start the authorization-code flow"
+      tags:
+        - OIDC
+  /{issuer}/debugger/callback:
+    get:
+      operationId: debugger-callback-get
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error_description
+          schema:
+            type: string
+        - in: header
+          name: Cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: authorization-code callback (back-channel exchange)"
+      tags:
+        - OIDC
+    post:
+      operationId: debugger-callback-post
+      parameters:
+        - in: path
+          name: issuer
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: code
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: state
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: error_description
+          schema:
+            type: string
+        - in: header
+          name: Cookie
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                format: base64
+                type: string
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: "Debugger: authorization-code callback (back-channel exchange)"
+      tags:
+        - OIDC
   /{issuer}/endsession:
     get:
       operationId: endsession-get
@@ -805,3 +1584,6 @@ paths:
       summary: OpenID Connect UserInfo endpoint
       tags:
         - OIDC
+tags:
+  - description: Test-time control plane (mock-oidc). Direct token mint, one-shot scenario enqueue, captured-request inspection, and clock control. Test-only; disabled by --control-enabled=false.
+    name: Mock Control

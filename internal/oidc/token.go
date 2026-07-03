@@ -74,20 +74,54 @@ func NewToken(issuer IssuerID, alg SigningAlgorithm, typ JOSEType, claims ClaimS
 // and handed back to the Verifier adapter for /userinfo and /introspect.
 type SignedToken string
 
+// MintKind is the closed kind of token a direct control-plane mint produces.
+type MintKind string
+
+// The two mintable token kinds. access_token follows the default access-token
+// shape; id_token defaults its audience to [client_id] when none is supplied.
+const (
+	MintAccessToken MintKind = "access_token"
+	MintIDToken     MintKind = "id_token"
+)
+
+// MintSpec is the fully-resolved command for TokenService.Mint — the direct
+// "issue a token without a flow" use case behind POST /_mock/mint. Every field is
+// a typed domain value the control edge parsed (parse-don't-validate): Issuer
+// (ParseIssuerID rejects _mock), the resolved BaseURL for iss (proxy-aware, or an
+// anyToken override), Subject/Audience/Scopes/ClientID, the custom Claims (the
+// lone map[string]any → ClaimSet crossing, done at the edge), Kind, the open JOSE
+// Typ, the advertised Algorithm, and the Expiry. Mint drives the SAME
+// Signer/KeyStore/Clock/IssuerRegistry as /token, so a minted token is
+// byte-identical to a granted one and verifies against the issuer's JWKS.
+type MintSpec struct {
+	Issuer    IssuerID
+	BaseURL   BaseURL
+	Subject   Subject
+	Audience  Audience
+	Scopes    Scopes
+	Claims    ClaimSet
+	ClientID  ClientID
+	Kind      MintKind
+	Typ       JOSEType
+	Algorithm SigningAlgorithm
+	Expiry    time.Duration
+}
+
 // TokenService orchestrates the token endpoint. It resolves the per-request
 // issuer through the shared issuerResolver, dispatches on the closed GrantType,
 // and mints the response over the Signer port. It holds no transport or crypto
 // type: the Signer performs all JWS, the Clock supplies every time value, and
 // the result is a typed TokenResponse the adapter maps to JSON.
 type TokenService struct {
-	issuers issuerResolver
-	signer  Signer
-	clock   Clock
-	codes   CodeStore         // authorization_code cache; nil until the grant is wired
-	refresh RefreshTokenStore // refresh-token persistence; nil until the grant is wired
-	rotate  bool              // rotateRefreshToken: replace the refresh token on redemption (default off)
-	newID   func() string
-	logger  *slog.Logger
+	issuers   issuerResolver
+	signer    Signer
+	clock     Clock
+	codes     CodeStore         // authorization_code cache; nil until the grant is wired
+	refresh   RefreshTokenStore // refresh-token persistence; nil until the grant is wired
+	scenarios CallbackQueue     // one-shot enqueued scenarios; nil disables the queue branch
+	rotate    bool              // rotateRefreshToken: replace the refresh token on redemption (default off)
+	newID     func() string
+	logger    *slog.Logger
 }
 
 // TokenOption customizes a TokenService at construction.
@@ -129,6 +163,19 @@ func WithRefreshStore(refresh RefreshTokenStore) TokenOption {
 	return func(s *TokenService) {
 		if refresh != nil {
 			s.refresh = refresh
+		}
+	}
+}
+
+// WithCallbackQueue wires the one-shot scenario queue every grant consults first
+// during callback resolution (enqueued scenario > configured callback > default),
+// including the refresh grant, so they all share one queue. Without it, the
+// scenario branch is skipped and resolution falls straight to the configured and
+// default callbacks.
+func WithCallbackQueue(queue CallbackQueue) TokenOption {
+	return func(s *TokenService) {
+		if queue != nil {
+			s.scenarios = queue
 		}
 	}
 }
@@ -203,6 +250,59 @@ func (s *TokenService) Issue(
 	}
 }
 
+// Mint issues a token directly from a MintSpec, bypassing any grant flow (the
+// control-plane issueToken/anyToken use case). It materializes the issuer and its
+// signing key through the SAME IssuerRegistry/KeyStore the /token endpoint uses,
+// stamps the default registered claims from the one Clock, folds in the spec's
+// custom claims, and signs through the SAME Signer — so the token is
+// indistinguishable from a granted one and verifies against the issuer's JWKS.
+// The returned ClaimSet is the minted claim set (for the control response). The
+// iss is the spec's already-resolved BaseURL (proxy-aware, or an anyToken
+// override); the signing algorithm is the issuer key's, guaranteeing the same
+// header shape as a grant.
+func (s *TokenService) Mint(ctx context.Context, spec MintSpec) (SignedToken, ClaimSet, error) {
+	if _, err := s.issuers.registry.Materialize(ctx, spec.Issuer); err != nil {
+		return "", ClaimSet{}, fmt.Errorf("materialize issuer: %w", err)
+	}
+	key, err := s.issuers.keys.SigningKey(ctx, spec.Issuer)
+	if err != nil {
+		return "", ClaimSet{}, fmt.Errorf("issuer signing key: %w", err)
+	}
+	now := s.clock.Now()
+	claims := s.mintClaims(spec, now)
+	s.logger.DebugContext(ctx, "minting token", "issuer", string(spec.Issuer), "kind", string(spec.Kind))
+	signed, err := s.signer.Sign(ctx, spec.Issuer, NewToken(spec.Issuer, key.Algorithm, spec.Typ, claims))
+	if err != nil {
+		return "", ClaimSet{}, fmt.Errorf("sign minted token: %w", err)
+	}
+	return signed, claims, nil
+}
+
+// mintClaims assembles the minted claim set from the spec and the one Clock:
+// iss from the resolved BaseURL, iat/nbf from now, exp from now + the spec expiry,
+// jti from the injected ID source, tid seeded to the issuer id, and the spec's
+// custom claims folded in verbatim. An id_token defaults its audience to
+// [client_id] when the spec leaves it unset (parity: id_token aud is [client_id]).
+func (s *TokenService) mintClaims(spec MintSpec, now Instant) ClaimSet {
+	aud := spec.Audience
+	if spec.Kind == MintIDToken && aud == nil {
+		aud = Audience{string(spec.ClientID)}
+	}
+	tenant := string(spec.Issuer)
+	return ClaimSet{
+		Subject:   spec.Subject,
+		Audience:  aud,
+		Issuer:    spec.BaseURL.IssuerURL(spec.Issuer),
+		IssuedAt:  now,
+		NotBefore: now,
+		Expiry:    now.Add(spec.Expiry),
+		JWTID:     s.newID(),
+		Tenant:    &tenant,
+		Scope:     spec.Scopes,
+		Custom:    spec.Claims.Custom.Clone(),
+	}
+}
+
 // clientCredentials mints an access token only: sub defaults to client_id and
 // aud follows the callback's 4-step precedence (→ ["default"] when nothing is
 // configured). iss/iat/nbf/exp/jti/tid come from defaultClaims off the one Clock;
@@ -218,7 +318,7 @@ func (s *TokenService) clientCredentials(
 		return TokenResponse{}, err
 	}
 	now := s.clock.Now()
-	claims := s.defaultClaims(issuer, cb.Subject(in), cb.Audience(in), cb, now)
+	claims := s.defaultClaims(issuer, cb.Subject(in), cb.Audience(in), cb, in, now)
 	access, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, issuer.Key.Algorithm, cb.TypeHeader(in), claims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
@@ -254,14 +354,14 @@ func (s *TokenService) password(
 	typ := cb.TypeHeader(in)
 
 	// id_token: aud is ALWAYS [client_id]; no nonce, no azp (only authcode adds azp).
-	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now)
+	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, in, now)
 	idToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign id token: %w", err)
 	}
 
 	// access_token: aud from the callback's 4-step chain.
-	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now)
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, in, now)
 	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
@@ -428,16 +528,20 @@ func (s *TokenService) authorizationCode(
 	alg := issuer.Key.Algorithm
 	typ := cb.TypeHeader(in)
 
-	// id_token: aud is ALWAYS [client_id]; nonce from the cache; azp added here only.
-	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now).
-		WithNonce(rec.Nonce).WithAZP(req.Client.ID).WithLoginClaims(login)
+	// id_token: aud is ALWAYS [client_id]; nonce from the cache; azp added here
+	// only, and only for the default callback (never a RequestMappingCallback).
+	idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, in, now).WithNonce(rec.Nonce)
+	if addsDefaultRegisteredClaims(cb) {
+		idClaims = idClaims.WithAZP(req.Client.ID)
+	}
+	idClaims = idClaims.WithLoginClaims(login)
 	idToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign id token: %w", err)
 	}
 
 	// access_token: aud from the callback's 4-step chain; same nonce, no azp.
-	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now).
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, in, now).
 		WithNonce(rec.Nonce).WithLoginClaims(login)
 	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
 	if err != nil {
@@ -461,9 +565,12 @@ func (s *TokenService) authorizationCode(
 // refreshToken redeems a refresh token: it looks up the stored record, enforces
 // the strict cross-issuer binding (the CORRECTED client text), and re-mints a
 // fresh access token — plus an id_token when the record carried a nonce — with a
-// FRESH jti/iat/exp but the SAME subject. Claim policy is replayed from the
-// stored callback (S3 resolution is stored-callback → default only; the S5
-// CallbackQueue is not consulted here). When rotateRefreshToken is enabled the
+// FRESH jti/iat/exp but the SAME subject. Claim policy is resolved by
+// resolveRefreshCallback, which consults the SAME enqueued-scenario queue as the
+// other grants FIRST (issuer-matched head, one-shot), then falls back to the
+// callback stored on the refresh record, then the default — so an enqueued
+// scenario steers refresh redemption too (the priority-parity invariant). When
+// rotateRefreshToken is enabled the
 // old token is removed and a new RefreshBareUUID token is returned; otherwise the
 // same refresh token is echoed back so it keeps redeeming.
 func (s *TokenService) refreshToken(
@@ -479,18 +586,18 @@ func (s *TokenService) refreshToken(
 		return TokenResponse{}, RefreshCrossIssuer()
 	}
 
-	cb := rec.Callback
-	if cb == nil {
-		cb = NewDefaultTokenCallback(issuer.ID)
-	}
 	now := s.clock.Now()
 	sub := rec.Subject
 	in := CallbackInput{Grant: GrantRefreshToken, Client: req.Client, Scopes: req.Scopes, Subject: sub}
+	cb, err := s.resolveRefreshCallback(ctx, issuer.ID, rec)
+	if err != nil {
+		return TokenResponse{}, err
+	}
 	alg := issuer.Key.Algorithm
 	typ := cb.TypeHeader(in)
 
 	// access_token: aud from the callback's 4-step chain; the cached nonce replayed.
-	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, now).WithNonce(rec.Nonce)
+	accClaims := s.defaultClaims(issuer, sub, cb.Audience(in), cb, in, now).WithNonce(rec.Nonce)
 	accessToken, err := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, accClaims))
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("sign access token: %w", err)
@@ -506,8 +613,10 @@ func (s *TokenService) refreshToken(
 	// id_token: minted only when the original grant carried a nonce (OIDC login);
 	// aud is ALWAYS [client_id] and it carries azp, matching the authcode exchange.
 	if rec.Nonce != nil {
-		idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, now).
-			WithNonce(rec.Nonce).WithAZP(req.Client.ID)
+		idClaims := s.defaultClaims(issuer, sub, Audience{string(req.Client.ID)}, cb, in, now).WithNonce(rec.Nonce)
+		if addsDefaultRegisteredClaims(cb) {
+			idClaims = idClaims.WithAZP(req.Client.ID)
+		}
 		idToken, signErr := s.signer.Sign(ctx, issuer.ID, NewToken(issuer.ID, alg, typ, idClaims))
 		if signErr != nil {
 			return TokenResponse{}, fmt.Errorf("sign id token: %w", signErr)
@@ -593,14 +702,17 @@ func (s *TokenService) issueRefresh(
 	return token, nil
 }
 
-// resolveCallback applies the callback precedence: the first configured callback
-// that Matches, else the built-in DefaultTokenCallback. The enqueued one-shot
-// Scenario branch (highest priority) lands with the CallbackQueue port in a
-// later slice; the signature already carries ctx and returns an error so that
-// widening does not touch callers.
-//
-//nolint:unparam // ctx and the error are reserved for the S5 CallbackQueue branch; the signature is kept stable.
-func (s *TokenService) resolveCallback(_ context.Context, issuer Issuer, in CallbackInput) (TokenCallback, error) {
+// resolveCallback applies the callback precedence: an issuer-matched enqueued
+// Scenario wins (highest priority, one-shot); else the first configured callback
+// that Matches; else the built-in DefaultTokenCallback. The refresh grant calls
+// resolveRefreshCallback, which shares the SAME queue, so an enqueued scenario is
+// consumed by whichever matching grant arrives first.
+func (s *TokenService) resolveCallback(ctx context.Context, issuer Issuer, in CallbackInput) (TokenCallback, error) {
+	if cb, ok, err := s.dequeueScenario(ctx, issuer.ID); err != nil {
+		return nil, err
+	} else if ok {
+		return cb, nil
+	}
 	for _, cb := range issuer.Callbacks {
 		if cb.Matches(in) {
 			return cb, nil
@@ -609,19 +721,68 @@ func (s *TokenService) resolveCallback(_ context.Context, issuer Issuer, in Call
 	return NewDefaultTokenCallback(issuer.ID), nil
 }
 
+// resolveRefreshCallback applies the refresh grant's precedence: an issuer-matched
+// enqueued Scenario wins (the same shared queue the other grants poll); else the
+// callback bound to the refresh record when redeemed; else the default. It keeps
+// the refresh grant on the one global queue (upstream: "the refresh grant
+// consults the same queue").
+func (s *TokenService) resolveRefreshCallback(
+	ctx context.Context,
+	issuer IssuerID,
+	rec RefreshRecord,
+) (TokenCallback, error) {
+	if cb, ok, err := s.dequeueScenario(ctx, issuer); err != nil {
+		return nil, err
+	} else if ok {
+		return cb, nil
+	}
+	if rec.Callback != nil {
+		return rec.Callback, nil
+	}
+	return NewDefaultTokenCallback(issuer), nil
+}
+
+// dequeueScenario consults the enqueued-scenario queue (when wired), popping the
+// head only if it targets issuer. It returns ok=false with no error when no
+// queue is wired or the head belongs to another issuer.
+func (s *TokenService) dequeueScenario(ctx context.Context, issuer IssuerID) (TokenCallback, bool, error) {
+	if s.scenarios == nil {
+		return nil, false, nil
+	}
+	sc, ok, err := s.scenarios.DequeueFor(ctx, issuer)
+	if err != nil {
+		return nil, false, fmt.Errorf("dequeue scenario: %w", err)
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	return sc.Callback, true, nil
+}
+
+// addsDefaultRegisteredClaims reports whether cb is the built-in default callback,
+// the only callback that stamps the tid (and, on authorization_code, azp)
+// registered claims — a RequestMappingCallback never adds them (upstream parity).
+func addsDefaultRegisteredClaims(cb TokenCallback) bool {
+	_, ok := cb.(DefaultTokenCallback)
+	return ok
+}
+
 // defaultClaims assembles the registered claims into a typed ClaimSet: iss from
-// the resolved BaseURL, iat/nbf from now, exp from now + the callback expiry,
-// jti from the injected ID source, and tid seeded to the issuer id (an
-// overridable claim). It never touches a map[string]any.
+// the resolved BaseURL, iat/nbf from now, exp from now + the callback expiry, and
+// jti from the injected ID source. tid is seeded to the issuer id ONLY for the
+// default callback (a RequestMappingCallback never adds it). The resolved
+// callback's extra (custom) claims are folded in add-only, skipping any
+// registered claim name so a mapping cannot shadow a typed field. It never
+// touches a map[string]any.
 func (s *TokenService) defaultClaims(
 	issuer Issuer,
 	sub Subject,
 	aud Audience,
 	cb TokenCallback,
+	in CallbackInput,
 	now Instant,
 ) ClaimSet {
-	tenant := string(issuer.ID)
-	return ClaimSet{
+	claims := ClaimSet{
 		Subject:   sub,
 		Audience:  aud,
 		Issuer:    issuer.BaseURL.IssuerURL(issuer.ID),
@@ -629,8 +790,18 @@ func (s *TokenService) defaultClaims(
 		NotBefore: now,
 		Expiry:    now.Add(cb.Expiry()),
 		JWTID:     s.newID(),
-		Tenant:    &tenant,
 	}
+	if addsDefaultRegisteredClaims(cb) {
+		tenant := string(issuer.ID)
+		claims.Tenant = &tenant
+	}
+	for _, e := range cb.ExtraClaims(in).Custom.Entries() {
+		if _, reserved := registeredClaimNames[e.Name]; reserved {
+			continue
+		}
+		claims.Custom.Set(e.Name, e.Value)
+	}
+	return claims
 }
 
 // expiresIn reports the token lifetime in whole seconds as exp - now, both taken

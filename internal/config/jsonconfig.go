@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -56,6 +57,14 @@ type Seed struct {
 	// token (the nonce is dropped). Absent → false: the same refresh token keeps
 	// redeeming, matching upstream's default.
 	RotateRefreshToken bool
+
+	// IssuerRecords carries the issuers pre-configured with token callbacks
+	// (upstream's tokenCallbacks). Each record groups one issuer's callbacks in
+	// declared (first-match) order; the composition root seeds them into the issuer
+	// registry so a configured RequestMapping/Default callback shapes that issuer's
+	// tokens without a runtime scenario. Empty → every issuer is zero-config
+	// (materialized on demand with the built-in default callback).
+	IssuerRecords []oidc.IssuerRecord
 }
 
 // DefaultSeed is the zero-config seed used when no JSON config is present.
@@ -70,6 +79,34 @@ type document struct {
 	TokenProvider      tokenProviderDoc `json:"tokenProvider"`
 	InteractiveLogin   bool             `json:"interactiveLogin"`
 	RotateRefreshToken bool             `json:"rotateRefreshToken"`
+	// TokenCallbacks is the declarative per-request callback list (upstream's
+	// tokenCallbacks). Each entry is the SAME JSON shape the control plane's
+	// enqueue-scenario DTO accepts, so a callback described as JSON parses
+	// identically whether it arrives at startup (here) or at runtime (/_mock).
+	TokenCallbacks []callbackDoc `json:"tokenCallbacks"`
+}
+
+// callbackDoc is one declarative token callback. With requestMappings it yields a
+// RequestMappingCallback; otherwise a DefaultTokenCallback carrying the
+// subject/audience/typ/claims/expiry fields. It mirrors controlapi.ScenarioDTO so
+// the two JSON entry points share one wire shape.
+type callbackDoc struct {
+	Issuer          string              `json:"issuer"`
+	Subject         string              `json:"subject"`
+	Audience        []string            `json:"audience"`
+	Claims          map[string]any      `json:"claims"`
+	Typ             string              `json:"typ"`
+	ExpirySeconds   *int                `json:"expirySeconds"`
+	RequestMappings []requestMappingDoc `json:"requestMappings"`
+}
+
+// requestMappingDoc is one param→templated-claims rule (upstream's
+// requestMappings). Its presence in a callbackDoc selects the RequestMappingCallback.
+type requestMappingDoc struct {
+	Param      string         `json:"param"`
+	Match      string         `json:"match"`
+	TypeHeader string         `json:"typeHeader"`
+	Claims     map[string]any `json:"claims"`
 }
 
 type tokenProviderDoc struct {
@@ -159,5 +196,91 @@ func (d document) toSeed() (Seed, error) {
 	seed.InteractiveLogin = d.InteractiveLogin
 	seed.RotateRefreshToken = d.RotateRefreshToken
 
+	records, err := toIssuerRecords(d.TokenCallbacks)
+	if err != nil {
+		return Seed{}, err
+	}
+	seed.IssuerRecords = records
+
 	return seed, nil
+}
+
+// toIssuerRecords groups the declarative callbacks by issuer into IssuerRecords,
+// preserving each issuer's declared (first-match) order. Grouping lets the token
+// service walk one issuer's configured callbacks in the order the operator wrote
+// them; the FIRST that matches wins (before the built-in default).
+func toIssuerRecords(docs []callbackDoc) ([]oidc.IssuerRecord, error) {
+	if len(docs) == 0 {
+		return nil, nil
+	}
+
+	order := make([]oidc.IssuerID, 0, len(docs))
+	byIssuer := make(map[oidc.IssuerID][]oidc.TokenCallback, len(docs))
+	for i, doc := range docs {
+		issuer, cb, err := doc.toCallback()
+		if err != nil {
+			return nil, fmt.Errorf("tokenCallbacks[%d]: %w", i, err)
+		}
+		if _, seen := byIssuer[issuer]; !seen {
+			order = append(order, issuer)
+		}
+		byIssuer[issuer] = append(byIssuer[issuer], cb)
+	}
+
+	records := make([]oidc.IssuerRecord, 0, len(order))
+	for _, issuer := range order {
+		records = append(records, oidc.IssuerRecord{ID: issuer, Callbacks: byIssuer[issuer]})
+	}
+	return records, nil
+}
+
+// toCallback maps one declarative callback onto the SAME domain constructors the
+// control-plane scenario mapping calls (oidc.NewRequestMappingCallback /
+// oidc.NewDefaultTokenCallbackWith), so config and control share one
+// anti-corruption path for "a callback described as JSON". requestMappings present
+// → a RequestMappingCallback; otherwise a DefaultTokenCallback carrying the
+// entry's subject/audience/typ/claims/expiry.
+func (d callbackDoc) toCallback() (oidc.IssuerID, oidc.TokenCallback, error) {
+	issuer, err := oidc.ParseIssuerID(d.Issuer)
+	if err != nil {
+		return "", nil, err
+	}
+	var expiry time.Duration
+	if d.ExpirySeconds != nil {
+		expiry = time.Duration(*d.ExpirySeconds) * time.Second
+	}
+
+	if len(d.RequestMappings) > 0 {
+		mappings := make([]oidc.RequestMapping, 0, len(d.RequestMappings))
+		for _, m := range d.RequestMappings {
+			claims, cErr := oidc.NewClaimSet(m.Claims)
+			if cErr != nil {
+				return "", nil, cErr
+			}
+			mappings = append(mappings, oidc.RequestMapping{
+				Param:      m.Param,
+				Match:      m.Match,
+				TypeHeader: oidc.JOSEType(m.TypeHeader),
+				Claims:     claims.Custom,
+			})
+		}
+		cb, mErr := oidc.NewRequestMappingCallback(issuer, expiry, mappings)
+		if mErr != nil {
+			return "", nil, mErr
+		}
+		return issuer, cb, nil
+	}
+
+	claims, err := oidc.NewClaimSet(d.Claims)
+	if err != nil {
+		return "", nil, err
+	}
+	return issuer, oidc.NewDefaultTokenCallbackWith(
+		issuer,
+		oidc.Subject(d.Subject),
+		oidc.Audience(d.Audience),
+		oidc.JOSEType(d.Typ),
+		claims.Custom,
+		expiry,
+	), nil
 }

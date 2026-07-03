@@ -187,6 +187,67 @@ type ClaimSet struct {
 	Custom    CustomClaims
 }
 
+// NewClaimSet builds a ClaimSet whose Custom claims are the given wire map — the
+// single map[string]any -> typed domain crossing for scripted claims (mint,
+// scenario, and requestMapping bodies parsed at the control/config edge). Every
+// entry is stored as a custom claim in sorted-key order so emission is
+// deterministic; the values are kept as their decoded JSON-native types (string,
+// float64, bool, []any, nested map[string]any) so the signing adapter's
+// json.Marshal round-trips them faithfully. Registered claim names are NOT lifted
+// into typed fields here — the caller sets those from dedicated inputs; a map key
+// that collides with a registered name is folded add-only by the token service.
+// It returns an error for signature symmetry with the other edge parsers; today
+// every well-formed JSON map is representable.
+func NewClaimSet(m map[string]any) (ClaimSet, error) {
+	var custom CustomClaims
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		custom.Set(k, m[k])
+	}
+	return ClaimSet{Custom: custom}, nil
+}
+
+// Ordered returns the claim set as ordered (name, value) entries in the canonical
+// JWT order the signing adapter emits — registered claims first (only when
+// present), then the custom claims in insertion order. It is the map-free
+// accessor the control edge ranges into the mint response's convenience claims
+// object; a Go map cannot preserve insertion order and encoding/json re-sorts its
+// keys, so the authoritative ordered emission always lives in the signed token.
+func (c ClaimSet) Ordered() []ClaimEntry {
+	var out []ClaimEntry
+	add := func(name string, v ClaimValue) { out = append(out, ClaimEntry{Name: name, Value: v}) }
+	if c.Issuer != "" {
+		add("iss", c.Issuer)
+	}
+	if c.Subject != "" {
+		add("sub", string(c.Subject))
+	}
+	if c.Audience != nil {
+		add("aud", []string(c.Audience))
+	}
+	add("iat", c.IssuedAt.Unix())
+	add("nbf", c.NotBefore.Unix())
+	add("exp", c.Expiry.Unix())
+	if c.JWTID != "" {
+		add("jti", c.JWTID)
+	}
+	if c.Nonce != nil {
+		add("nonce", string(*c.Nonce))
+	}
+	if c.Azp != nil {
+		add("azp", string(*c.Azp))
+	}
+	if c.Tenant != nil {
+		add("tid", *c.Tenant)
+	}
+	if len(c.Scope) > 0 {
+		add("scope", c.Scope.String())
+	}
+	for _, e := range c.Custom.Entries() {
+		add(e.Name, e.Value)
+	}
+	return out
+}
+
 // clone returns a deep copy of the claim set whose mutable containers (Custom
 // map, Audience/Scope slices) are fresh, so a copy can be mutated without
 // aliasing the receiver. The pointer-optional claims are replaced wholesale by

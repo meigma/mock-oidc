@@ -1,6 +1,9 @@
 package oidc_test
 
 import (
+	"go/parser"
+	"go/token"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -55,6 +58,31 @@ func TestCoreImportsAreClean(t *testing.T) {
 				assert.Falsef(t, strings.HasPrefix(imp, bad),
 					"core %q imports forbidden package %q (matched prefix %q)", p.PkgPath, imp, bad)
 			}
+		}
+	}
+}
+
+// TestTransportFreeFiles is a file-scoped guard beside the package-level import
+// scan: it parses the request-capture and callback source files directly and
+// fails if either names net/url or net/http. capture.go takes only stdlib
+// primitives (method/rawURL strings, map[string][]string, []byte) so the httpapi
+// edge — not the core — touches *url.URL/http.Header; callback.go's request
+// matching and ${...} templating stay pure policy over the domain FormParams. A
+// leak here would regress the §3 dependency rule at the exact files the design
+// calls out, even before a transitive package-level import appears.
+func TestTransportFreeFiles(t *testing.T) {
+	t.Parallel()
+
+	forbidden := map[string]struct{}{"net/http": {}, "net/url": {}}
+	for _, file := range []string{"capture.go", "callback.go"} {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, file, nil, parser.ImportsOnly)
+		require.NoErrorf(t, err, "parse %s", file)
+		for _, imp := range f.Imports {
+			path, err := strconv.Unquote(imp.Path.Value)
+			require.NoError(t, err)
+			_, bad := forbidden[path]
+			assert.Falsef(t, bad, "%s imports forbidden transport package %q", file, path)
 		}
 	}
 }

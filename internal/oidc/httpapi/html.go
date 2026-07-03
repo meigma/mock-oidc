@@ -12,10 +12,12 @@ const htmlContentType = "text/html; charset=utf-8"
 
 // The template names, matching the embedded file basenames.
 const (
-	tmplLogin     = "login.html"
-	tmplFormPost  = "form_post.html"
-	tmplError     = "error.html"
-	tmplLoggedOut = "logged_out.html"
+	tmplLogin          = "login.html"
+	tmplFormPost       = "form_post.html"
+	tmplError          = "error.html"
+	tmplLoggedOut      = "logged_out.html"
+	tmplDebugger       = "debugger.html"
+	tmplDebuggerResult = "debugger_result.html"
 )
 
 // htmlFS embeds the browser-surface templates. They render only through
@@ -62,6 +64,35 @@ type formPostData struct {
 type errorData struct {
 	Error       string
 	Description string
+}
+
+// debuggerFormData is the debugger.html model: the POST action URL and the
+// pre-filled form fields (issuer, client_id, scope, subject).
+type debuggerFormData struct {
+	Action   string
+	Issuer   string
+	ClientID string
+	Scope    string
+	Subject  string
+}
+
+// debuggerResultData is the debugger_result.html model: the decoded tokens plus
+// the raw back-channel exchange bytes, or an error state. Every field is
+// auto-escaped by html/template.
+type debuggerResultData struct {
+	Issuer           string
+	TokenEndpoint    string
+	RequestBody      string
+	ResponseStatus   string
+	ResponseBody     string
+	AccessToken      string
+	IDToken          string
+	RefreshToken     string
+	TokenType        string
+	ExpiresIn        int
+	Scope            string
+	Error            string
+	ErrorDescription string
 }
 
 // htmlOutput renders the named template into a BrowserOutput at the given status.

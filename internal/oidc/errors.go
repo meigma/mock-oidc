@@ -79,6 +79,11 @@ var (
 	ErrUnsupportedGrantType = errors.New("unsupported grant_type")
 	//nolint:staticcheck // ST1005: exact upstream wording "Unsupported algorithm" is asserted by parity tests.
 	ErrUnsupportedAlgorithm = errors.New("Unsupported algorithm")
+	// ErrInvalidInstant and ErrInvalidDuration are control-plane clock sentinels:
+	// the /_mock/clock edge wraps a missing freeze instant or an unparseable Go
+	// duration with these so toControlError maps them to a 422 problem+json.
+	ErrInvalidInstant  = errors.New("invalid instant")
+	ErrInvalidDuration = errors.New("invalid duration")
 )
 
 // MissingParameter reports a required protocol parameter as invalid_request

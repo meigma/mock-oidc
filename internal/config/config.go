@@ -39,6 +39,19 @@ const (
 	// OpenTelemetry collector, so it is opt-in. Enable it and configure the
 	// exporter via the standard OTEL_* environment variables.
 	defaultTracingEnabled = false
+	// defaultControlEnabled is true: the /_mock test-time control plane is the
+	// headline capability of a for-testing OIDC server, so it is ON by default.
+	// Turn it OFF (--control-enabled=false) to serve only the public protocol
+	// surface, making every /_mock route return the ordinary OIDC 404.
+	defaultControlEnabled = true
+	// defaultControlAddr is empty, co-locating the /_mock control plane on the main
+	// API listener (Addr). Set a host:port to serve it on its own dedicated
+	// listener instead (no request-recording middleware, mirroring metrics-addr).
+	defaultControlAddr = ""
+	// defaultControlToken is empty, which disables the control-token gate: every
+	// /_mock request is accepted. Set a token to require it in the
+	// X-Mock-Control-Token header (constant-time compared) or get a 401.
+	defaultControlToken = ""
 )
 
 // Config holds runtime settings for the API server.
@@ -85,6 +98,19 @@ type Config struct {
 	// false because tracing needs an external collector; the exporter is then
 	// configured via the standard OTEL_* environment variables.
 	TracingEnabled bool
+	// ControlEnabled turns on the /_mock test-time control plane (direct mint,
+	// scenario enqueue, request inspection, clock control). It defaults to true;
+	// false serves only the public protocol surface, so every /_mock route returns
+	// the ordinary OIDC 404.
+	ControlEnabled bool
+	// ControlAddr is the host:port of a dedicated listener for the /_mock control
+	// plane. Empty (the default) co-locates /_mock on Addr; a non-empty value moves
+	// it to its own listener with no request-recording middleware.
+	ControlAddr string
+	// ControlToken, when set, gates every /_mock request behind the
+	// X-Mock-Control-Token header (constant-time compared). Empty (the default)
+	// disables the gate, accepting every control request.
+	ControlToken string
 }
 
 // RegisterFlags declares the server configuration flags on flags. Binding them
@@ -122,6 +148,21 @@ func RegisterFlags(flags *pflag.FlagSet) {
 		defaultTracingEnabled,
 		"enable OpenTelemetry tracing (OTLP); configure the exporter via the standard OTEL_* env vars",
 	)
+	flags.Bool(
+		"control-enabled",
+		defaultControlEnabled,
+		"enable the /_mock test-time control plane; false serves only the public protocol surface",
+	)
+	flags.String(
+		"control-addr",
+		defaultControlAddr,
+		"host:port for a dedicated /_mock control listener; empty co-locates /_mock on --addr",
+	)
+	flags.String(
+		"control-token",
+		defaultControlToken,
+		"require this token in the X-Mock-Control-Token header on /_mock requests; empty disables the gate",
+	)
 }
 
 // Load reads the server configuration from vp, applying defaults for unset keys.
@@ -145,6 +186,9 @@ func Load(vp *viper.Viper) Config {
 		RateLimitRPS:       vp.GetFloat64("rate-limit-rps"),
 		RateLimitBurst:     vp.GetInt("rate-limit-burst"),
 		TracingEnabled:     vp.GetBool("tracing-enabled"),
+		ControlEnabled:     vp.GetBool("control-enabled"),
+		ControlAddr:        vp.GetString("control-addr"),
+		ControlToken:       vp.GetString("control-token"),
 	}
 }
 
@@ -155,6 +199,14 @@ func (c Config) Validate() error {
 	}
 	if c.MetricsAddr != "" && c.MetricsAddr == c.Addr {
 		return errors.New("metrics-addr must differ from addr")
+	}
+	if c.ControlAddr != "" {
+		if c.ControlAddr == c.Addr {
+			return errors.New("control-addr must differ from addr")
+		}
+		if c.ControlAddr == c.MetricsAddr {
+			return errors.New("control-addr must differ from metrics-addr")
+		}
 	}
 	if c.RequestTimeout <= 0 {
 		return errors.New("request-timeout must be positive")
@@ -194,4 +246,7 @@ func setDefaults(vp *viper.Viper) {
 	vp.SetDefault("rate-limit-rps", defaultRateLimitRPS)
 	vp.SetDefault("rate-limit-burst", defaultRateLimitBurst)
 	vp.SetDefault("tracing-enabled", defaultTracingEnabled)
+	vp.SetDefault("control-enabled", defaultControlEnabled)
+	vp.SetDefault("control-addr", defaultControlAddr)
+	vp.SetDefault("control-token", defaultControlToken)
 }

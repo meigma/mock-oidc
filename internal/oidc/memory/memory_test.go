@@ -2,6 +2,8 @@ package memory_test
 
 import (
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -157,4 +159,73 @@ func TestClockFreezeAdvanceUnfreeze(t *testing.T) {
 	before := wall.Now().Time()
 	wall.Advance(time.Hour)
 	assert.False(t, wall.Now().Time().Before(before.Add(time.Hour)))
+}
+
+// TestClockFreezeAtAndState covers the control-plane facet: Freeze pins the clock
+// at an explicit instant (re-freezing repins), State reports frozen + instant,
+// Advance moves the frozen instant, and Unfreeze returns to the wall clock with a
+// State that reports not-frozen.
+func TestClockFreezeAtAndState(t *testing.T) {
+	t.Parallel()
+
+	clock := memory.NewClock()
+
+	// Unfrozen: State reports not frozen and a near-now instant.
+	st := clock.State()
+	assert.False(t, st.Frozen)
+	assert.WithinDuration(t, time.Now(), st.Now.Time(), time.Minute)
+
+	at := oidc.NewInstant(time.Unix(1_700_000_000, 0))
+	clock.Freeze(at)
+	assert.Equal(t, at, clock.Now())
+	st = clock.State()
+	assert.True(t, st.Frozen)
+	assert.Equal(t, at, st.Now)
+
+	// Advance moves the pinned instant.
+	clock.Advance(90 * time.Second)
+	assert.Equal(t, at.Add(90*time.Second), clock.State().Now)
+
+	// Re-freezing repins to a new instant (jump the clock anywhere).
+	other := oidc.NewInstant(time.Unix(1_800_000_000, 0))
+	clock.Freeze(other)
+	assert.Equal(t, other, clock.Now())
+
+	// Unfreeze returns to the wall clock.
+	clock.Unfreeze()
+	st = clock.State()
+	assert.False(t, st.Frozen)
+	assert.WithinDuration(t, time.Now(), st.Now.Time(), time.Minute)
+}
+
+// TestIssuerRegistryMaterializeConcurrent hammers Materialize from many
+// goroutines — both racing on a single issuer (idempotency under contention) and
+// materializing distinct issuers in parallel — and confirms the registry stays
+// consistent. Run under `go test -race`, it guards the computeIfAbsent
+// double-checked locking against data races and lost updates.
+func TestIssuerRegistryMaterializeConcurrent(t *testing.T) {
+	t.Parallel()
+
+	reg := memory.NewIssuerRegistry()
+	ctx := context.Background()
+
+	const (
+		issuers = 16
+		workers = 8
+	)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for i := range issuers {
+				id := oidc.IssuerID("issuer-" + strconv.Itoa(i))
+				rec, _ := reg.Materialize(ctx, id)
+				assert.Equal(t, id, rec.ID)
+			}
+		})
+	}
+	wg.Wait()
+
+	known, err := reg.Known(ctx)
+	require.NoError(t, err)
+	assert.Len(t, known, issuers, "each distinct issuer is materialized exactly once")
 }

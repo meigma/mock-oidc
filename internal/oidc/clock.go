@@ -42,6 +42,15 @@ type Clock interface {
 	Now() Instant
 }
 
+// ClockState is a snapshot of the mutable clock's control-plane state: whether it
+// is currently frozen and the instant it reports now. It is the return value of
+// the controlapi ClockController.State facet (GET /_mock/clock) and carries no
+// behavior — a plain read model over the running clock.
+type ClockState struct {
+	Frozen bool
+	Now    Instant
+}
+
 // SystemClock reads the wall clock. It is a unit-test/default seam; the running
 // server wires the mutable memory.Clock instead.
 type SystemClock struct{}
