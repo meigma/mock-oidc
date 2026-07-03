@@ -70,3 +70,26 @@ Build workflow (wf_6ab9d04e-e22, 9 opus agents, ~1.15M tokens) completed:
   workflow-internal agent forks a duplicate from transcript — killed it;
   workflow agents are not addressable.
 Next: rebuild image with the fix, then the container acceptance pass.
+
+## 2026-07-02 23:22 — Acceptance pass COMPLETE: accepted after two blocker fixes
+Ran the full acceptance gate against mock-oidc:dev (console bind-mounted,
+host port remapped 9080→8080). Final: **91 PASS / 0 FAIL / 1 expected SKIP
+of 92** browser checks + fully green curl block (zero-config boot,
+interactiveLogin seed, TLS self-signed, X-Forwarded-* incl. default-port
+elision, metrics listener, un-normalized traversal probes, boot banner).
+All 5 manual flows PASS (login page, fragment, form_post-via-capture,
+debugger round trip validating the back-channel under port remap,
+cross-origin CORS with full Discovery suite re-run from 127.0.0.1 origin).
+Two blockers found and fixed via separate PRs, image rebuilt, suite re-run
+green both times:
+- **PR #15 (aa05d23)**: /static/index.html unreachable (http.ServeFile 301 →
+  dir 404). Fixed with os.Open + ServeContent + regression test.
+- **PR #16 (8b8d9e0)**: sub-less tokens on the non-interactive auth-code path
+  (confirmed session-002 open thread; OIDC Core violation, upstream defaults
+  subject to UUID). Fixed with per-callback UUID terminal fallback in
+  DefaultTokenCallback.Subject; cc/ROPC/login/configured precedence unchanged.
+Report: .journal/003/acceptance-report.md (+ exports and screenshots).
+Remaining pre-publish flags: LICENSE missing (README says add before
+publishing), .agents template-go-api remnants (cosmetic), version/CHANGELOG
+reset before first real release.
+Next: open + merge the webtest console PR, close the session.

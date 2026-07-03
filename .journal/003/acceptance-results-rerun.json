@@ -1,0 +1,1564 @@
+{
+  "startedAt": "2026-07-03T06:21:45.754Z",
+  "cfg": {
+    "base": "http://localhost:9080",
+    "issuer": "acme",
+    "issuer2": "beta",
+    "configuredIssuer": "configured",
+    "clientId": "web-client",
+    "controlToken": ""
+  },
+  "sections": [
+    {
+      "id": "discovery",
+      "title": "Discovery / .well-known",
+      "checks": [
+        {
+          "name": "openid-configuration returns 200 JSON",
+          "status": "PASS",
+          "expected": "200 + JSON",
+          "actual": "200 + JSON",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            },
+            "raw": "{\"issuer\":\"http://localhost:9080/acme\",\"authorization_endpoint\":\"http://localhost:9080/acme/authorize\",\"end_session_endpoint\":\"http://localhost:9080/acme/endsession\",\"revocation_endpoint\":\"http://localhost:9080/acme/revoke\",\"token_endpoint\":\"http://localhost:9080/acme/token\",\"userinfo_endpoint\":\"http://localhost:9080/acme/userinfo\",\"jwks_uri\":\"http://localhost:9080/acme/jwks\",\"introspection_endpoint\":\"http://localhost:9080/acme/introspect\",\"response_types_supported\":[\"code\",\"none\",\"id_token\",\"token\"],\"response_modes_supported\":[\"query\",\"fragment\",\"form_post\"],\"subject_types_supported\":[\"public\"],\"id_token_signing_alg_values_supported\":[\"ES256\",\"ES384\",\"RS256\",\"RS384\",\"RS512\",\"PS256\",\"PS384\",\"PS512\"],\"code_challenge_methods_supported\":[\"plain\",\"S256\"]}\n"
+          }
+        },
+        {
+          "name": "field order matches the 13-key contract",
+          "status": "PASS",
+          "expected": "issuer, authorization_endpoint, end_session_endpoint, revocation_endpoint, token_endpoint, userinfo_endpoint, jwks_uri, introspection_endpoint, response_types_supported, response_modes_supported, subject_types_supported, id_token_signing_alg_values_supported, code_challenge_methods_supported",
+          "actual": "issuer, authorization_endpoint, end_session_endpoint, revocation_endpoint, token_endpoint, userinfo_endpoint, jwks_uri, introspection_endpoint, response_types_supported, response_modes_supported, subject_types_supported, id_token_signing_alg_values_supported, code_challenge_methods_supported",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            }
+          }
+        },
+        {
+          "name": "forbidden keys are absent",
+          "status": "PASS",
+          "expected": "none present",
+          "actual": "none present",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            },
+            "note": "checked: registration_endpoint, scopes_supported, grant_types_supported, claims_supported, token_endpoint_auth_methods_supported, $schema"
+          }
+        },
+        {
+          "name": "both .well-known paths are byte-identical",
+          "status": "PASS",
+          "expected": "identical bodies",
+          "actual": "identical",
+          "detail": {
+            "req": [
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/.well-known/oauth-authorization-server"
+              }
+            ]
+          }
+        },
+        {
+          "name": "no Link response header",
+          "status": "PASS",
+          "expected": "absent",
+          "actual": "absent",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            }
+          }
+        },
+        {
+          "name": "issuer field equals base + / + issuer",
+          "status": "PASS",
+          "expected": "http://localhost:9080/acme",
+          "actual": "http://localhost:9080/acme",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            }
+          }
+        },
+        {
+          "name": "enum contents exactly match the contract",
+          "status": "PASS",
+          "expected": "all 5 enums match",
+          "actual": "all match",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            }
+          }
+        },
+        {
+          "name": "every endpoint/jwks_uri starts with the issuer URL",
+          "status": "PASS",
+          "expected": "all start with http://localhost:9080/acme",
+          "actual": "all prefixed",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/.well-known/openid-configuration"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "jwks",
+      "title": "JWKS & Key Isolation",
+      "checks": [
+        {
+          "name": "jwks keys are well-formed (sig / RS256 / RSA, kid == issuer)",
+          "status": "PASS",
+          "expected": "sig/RS256/RSA, kid=acme",
+          "actual": "1 key(s), all sig/RS256/RSA, kid=acme",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/jwks"
+            }
+          }
+        },
+        {
+          "name": "no private JWK members (d, p, q, dp, dq, qi)",
+          "status": "PASS",
+          "expected": "no private members",
+          "actual": "none present",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/jwks"
+            },
+            "note": "checked: d, p, q, dp, dq, qi"
+          }
+        },
+        {
+          "name": "fresh issuer materializes a key set on first hit",
+          "status": "PASS",
+          "expected": "non-empty, kid=mat-176e520ec296",
+          "actual": "1 key(s), kid=mat-176e520ec296",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/mat-176e520ec296/jwks"
+            },
+            "note": "throwaway issuer mat-176e520ec296 materialized on demand"
+          }
+        },
+        {
+          "name": "distinct issuers \u2192 distinct kid and distinct modulus n",
+          "status": "PASS",
+          "expected": "distinct kid and n",
+          "actual": "kid \"acme\" vs \"beta\"; moduli differ",
+          "detail": {
+            "req": [
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/jwks"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/beta/jwks"
+              }
+            ]
+          }
+        },
+        {
+          "name": "cross-issuer isolation: minted token verifies only under its issuer",
+          "status": "PASS",
+          "expected": "true under acme, false under beta",
+          "actual": "verified only under its own issuer",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/mint",
+                "body": {
+                  "issuer": "acme",
+                  "kind": "access_token"
+                }
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/jwks"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/beta/jwks"
+              }
+            ],
+            "note": "kid=acme, alg=RS256"
+          }
+        },
+        {
+          "name": "reserved prefix: GET /_mock/jwks \u2192 404 not_found (OAuth2 envelope)",
+          "status": "PASS",
+          "expected": "404 + { error: 'not_found' }",
+          "actual": "404 + error='not_found'",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/_mock/jwks"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "authorize",
+      "title": "Authorization Endpoint",
+      "checks": [
+        {
+          "name": "response_type=code with state \u2192 code + echoed state on callback",
+          "status": "PASS",
+          "expected": "code + state=9292cd9ba1c3d5700345356f278935c7",
+          "actual": "code=9be1633c\u2026 state=9292cd9ba1c3d5700345356f278935c7",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/authorize?response_type=code&client_id=web-client&scope=openid+profile&state=9292cd9ba1c3d5700345356f278935c7&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+              "finalUrl": "http://localhost:9080/static/callback.html?code=9be1633c-912e-4eda-9129-f39bdfc6f1e5&state=9292cd9ba1c3d5700345356f278935c7"
+            }
+          }
+        },
+        {
+          "name": "no state param \u2192 code present, state omitted from callback",
+          "status": "PASS",
+          "expected": "code present, state absent",
+          "actual": "code=bd9144bd\u2026, no state",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/authorize?response_type=code&client_id=web-client&scope=openid+profile&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+              "finalUrl": "http://localhost:9080/static/callback.html?code=bd9144bd-d6ad-4670-8f4b-49facd650fdf"
+            }
+          }
+        },
+        {
+          "name": "response_type token/id_token/garbage \u2192 error at redirect_uri, no code",
+          "status": "PASS",
+          "expected": "token/id_token/garbage \u2192 error, no code",
+          "actual": "all 3 errored to redirect_uri, no code",
+          "detail": {
+            "req": [
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/authorize?response_type=token&client_id=web-client&scope=openid+profile&state=225ae1995ecad667e2ab34b28517c2ff&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+                "finalUrl": "http://localhost:9080/static/callback.html?error=invalid_grant&error_description=response_type+token+not+supported.&state=225ae1995ecad667e2ab34b28517c2ff"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/authorize?response_type=id_token&client_id=web-client&scope=openid+profile&state=c353ab380f94f0c10e281fe0186aeab9&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+                "finalUrl": "http://localhost:9080/static/callback.html?error=invalid_grant&error_description=response_type+id_token+not+supported.&state=c353ab380f94f0c10e281fe0186aeab9"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/authorize?response_type=garbage&client_id=web-client&scope=openid+profile&state=7b40ce002b9e40f4b9ccaa734e1be5ae&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+                "finalUrl": "http://localhost:9080/static/callback.html?error=invalid_grant&error_description=response_type+garbage+not+supported.&state=7b40ce002b9e40f4b9ccaa734e1be5ae"
+              }
+            ]
+          }
+        },
+        {
+          "name": "POST /authorize login form without username \u2192 400 invalid_request",
+          "status": "PASS",
+          "expected": "400 + invalid_request",
+          "actual": "400 + invalid_request",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/authorize?response_type=code&client_id=web-client",
+              "body": "claims={} (no username)"
+            },
+            "raw": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Authorization error \u2014 mock-oidc</title>\n<style>\n  :root { col \u2026"
+          }
+        },
+        {
+          "name": "prompt=none \u2192 code without rendering a login page",
+          "status": "PASS",
+          "expected": "code + callback.html (no login page)",
+          "actual": "code issued, landed on callback.html",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/authorize?response_type=code&client_id=web-client&scope=openid+profile&state=99959d6eda3c6a578b82e5112ba0783c&prompt=none&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html",
+              "finalUrl": "http://localhost:9080/static/callback.html?code=0b81fdfc-bf21-40db-959c-65f531b2018c&state=99959d6eda3c6a578b82e5112ba0783c"
+            }
+          }
+        },
+        {
+          "name": "GET /favicon.ico \u2192 200",
+          "status": "PASS",
+          "expected": "200",
+          "actual": "200",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/favicon.ico"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "grants",
+      "title": "Token Grants (all six)",
+      "checks": [
+        {
+          "name": "client_credentials \u2192 access-only, sub == client_id",
+          "status": "PASS",
+          "expected": "200 access-only, sub==clientId",
+          "actual": "200 sub=web-client",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "client_credentials",
+                "client_id": "web-client",
+                "scope": "openid"
+              }
+            }
+          }
+        },
+        {
+          "name": "authorization_code \u2192 id + access + refresh",
+          "status": "PASS",
+          "expected": "200 + all three tokens",
+          "actual": "access + id + refresh present",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "authorization_code",
+                "code": "24b5b69a-3ed7-49b2-8191-3582185218aa",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "authorization code is single-use",
+          "status": "PASS",
+          "expected": "re-use \u2192 400 invalid_grant",
+          "actual": "400 invalid_grant",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "authorization_code",
+                "code": "1a55618f-b166-461c-ba96-fae8ba78c60d",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "PKCE S256 happy path",
+          "status": "PASS",
+          "expected": "S256 verifier \u2192 200",
+          "actual": "200 with tokens",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "authorization_code",
+                "code": "76f906f8-4919-4ecb-8022-bfcdc50e8b10",
+                "client_id": "web-client",
+                "code_verifier": "wqcsZ5nyxRiqk9PpbDvjvx0RoxPVnuEBD3TO2_OC0qU"
+              }
+            }
+          }
+        },
+        {
+          "name": "PKCE mismatch \u2192 invalid_grant (pkce), then code is burned",
+          "status": "PASS",
+          "expected": "wrong\u2192400 invalid_grant/pkce; then burned",
+          "actual": "400 invalid_grant (invalid_pkce: code_verifier does not compute to code_challenge from request); retry 400",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "authorization_code",
+                "code": "b382b56b-63ed-4b16-a422-7305fdbfc2d1",
+                "client_id": "web-client",
+                "code_verifier": "1dJTY_GmwC5tslKDIA4-OdIo9Qpcy1kcrqiKpzw9UKw"
+              }
+            }
+          }
+        },
+        {
+          "name": "PKCE asymmetry: challenge without verifier \u2192 invalid_grant",
+          "status": "PASS",
+          "expected": "missing verifier \u2192 400 invalid_grant",
+          "actual": "400 invalid_grant",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "authorization_code",
+                "code": "a136c368-92de-4239-a012-d1f5e32a7e2e",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "refresh_token \u2192 fresh access_token, same sub, different jti",
+          "status": "PASS",
+          "expected": "200, same sub, new jti",
+          "actual": "sub=612a3b88-4c08-41b9-8667-d5b5f4ecc8b9 jti\u2260orig",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "refresh_token",
+                "refresh_token": "76ef42a4-3988-4eb6-bc73-39d7a6d27640",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "refresh_token unknown \u2192 invalid_grant",
+          "status": "PASS",
+          "expected": "unknown refresh \u2192 400 invalid_grant",
+          "actual": "400 invalid_grant",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "refresh_token",
+                "refresh_token": "nope",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "cross-issuer refresh \u2192 invalid_grant (different issuer)",
+          "status": "PASS",
+          "expected": "400 invalid_grant / different issuer",
+          "actual": "400 invalid_grant (refresh_token was issued by a different issuer)",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/beta/token",
+              "form": {
+                "grant_type": "refresh_token",
+                "refresh_token": "0adfb435-5401-4717-b2b1-2240e762f949",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "no rotation: same refresh redeems twice",
+          "status": "PASS",
+          "expected": "same token redeems twice \u2192 200,200",
+          "actual": "200, 200",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "refresh_token",
+                "refresh_token": "2159b545-e12d-4cd9-b691-cc3e4acedab5",
+                "client_id": "web-client"
+              }
+            }
+          }
+        },
+        {
+          "name": "password \u2192 id + access, NO refresh, sub == username",
+          "status": "PASS",
+          "expected": "200 id+access, no refresh, sub=bob; any pw",
+          "actual": "sub=bob, no refresh, 2nd pw 200",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "password",
+                "username": "bob",
+                "password": "anything",
+                "scope": "openid"
+              }
+            }
+          }
+        },
+        {
+          "name": "jwt-bearer \u2192 access-only, claims kept, iss re-stamped",
+          "status": "PASS",
+          "expected": "access-only, sub/custom kept, iss re-stamped",
+          "actual": "sub=obo-user iss=http://localhost:9080/acme",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvYm8tdXNlciI\u2026(+89)"
+              }
+            }
+          }
+        },
+        {
+          "name": "jwt-bearer missing assertion \u2192 invalid_request",
+          "status": "PASS",
+          "expected": "no assertion \u2192 400 invalid_request",
+          "actual": "400 invalid_request",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer"
+              }
+            }
+          }
+        },
+        {
+          "name": "jwt-bearer no scope anywhere \u2192 invalid_request",
+          "status": "PASS",
+          "expected": "no scope \u2192 400 invalid_request",
+          "actual": "400 invalid_request",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvYm8tdXNlciI\u2026(+38)"
+              }
+            }
+          }
+        },
+        {
+          "name": "token-exchange \u2192 access-only, issued_token_type, aud, no scope",
+          "status": "PASS",
+          "expected": "200 access-only, issued_token_type, aud=exchanged-aud, no scope",
+          "actual": "all satisfied",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "subject_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdWJqIiwiaWR\u2026(+37)",
+                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                "client_id": "web-client",
+                "client_secret": "s3cret",
+                "audience": "exchanged-aud"
+              }
+            }
+          }
+        },
+        {
+          "name": "token-exchange without client auth \u2192 invalid_request (ClientAuthentication)",
+          "status": "PASS",
+          "expected": "400 invalid_request / ClientAuthentication",
+          "actual": "400 invalid_request (request must contain some form of ClientAuthentication.)",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "subject_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdWJqIn0.ZHV\u2026(+17)",
+                "subject_token_type": "urn:ietf:params:oauth:token-type:jwt"
+              }
+            }
+          }
+        },
+        {
+          "name": "private_key_jwt structural rules (token-exchange)",
+          "status": "PASS",
+          "expected": "valid\u2192200; lifetime/iss/sub/empty-aud/wrong-aud \u2192 400 invalid_request",
+          "actual": "all 6 structural cases as expected",
+          "detail": {
+            "note": "signature deliberately unverified; only structure enforced"
+          }
+        },
+        {
+          "name": "grant_type: blank \u2192 invalid_request, unknown \u2192 invalid_grant",
+          "status": "PASS",
+          "expected": "blank\u2192invalid_request; foo\u2192invalid_grant",
+          "actual": "both as expected",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "form": {
+                  "grant_type": "",
+                  "client_id": "web-client"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "form": {
+                  "grant_type": "foo",
+                  "client_id": "web-client"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "client_secret_basic accepted (client_credentials)",
+          "status": "PASS",
+          "expected": "Basic auth \u2192 200, sub==clientId",
+          "actual": "200 sub=web-client",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "form": {
+                "grant_type": "client_credentials",
+                "scope": "openid"
+              },
+              "authorization": "Basic (user=web-client)"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "tokenContent",
+      "title": "Token Content & Callbacks",
+      "checks": [
+        {
+          "name": "default registered claims present and well-formed (client_credentials)",
+          "status": "PASS",
+          "expected": "sub,aud,iss,iat,nbf,exp,jti present; iss/exp/jti valid",
+          "actual": "all valid",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+            }
+          }
+        },
+        {
+          "name": "tid claim equals the issuer id",
+          "status": "PASS",
+          "expected": "tid === acme",
+          "actual": "acme",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+            }
+          }
+        },
+        {
+          "name": "azp scoping: authorization_code id_token only (never access / client_credentials)",
+          "status": "PASS",
+          "expected": "id_token azp === web-client; no azp on either access token",
+          "actual": "id_token azp set; access tokens carry none",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=authorization_code&code=87bd2b5b-0ace-4fa4-9522-66e2ba0b90e4&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html&client_id=web-client&client_secret=test-secret"
+              }
+            ]
+          }
+        },
+        {
+          "name": "id_token aud is exactly [client_id]",
+          "status": "PASS",
+          "expected": "aud === [web-client]",
+          "actual": "[\"web-client\"]",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token",
+              "body": "grant_type=authorization_code&code=92b242c3-4c31-4e3b-b562-5aac1dcf595c&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html&client_id=web-client&client_secret=test-secret"
+            }
+          }
+        },
+        {
+          "name": "access_token aud default chain (scope-derived vs [\"default\"])",
+          "status": "PASS",
+          "expected": "[\"default\"] for OIDC-only scopes; non-OIDC scope carried into aud",
+          "actual": "[\"default\"] and [\"custom-api\"]",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret&scope=openid+profile"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret&scope=openid+custom-api"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nonce passthrough on authorization_code, never injectable via /token",
+          "status": "PASS",
+          "expected": "cached nonce stamped into id_token; token-request nonce param ignored",
+          "actual": "id_token nonce matches; client_credentials nonce absent",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=authorization_code&code=c2e9fc4d-680b-4d41-8f11-264678e1a0b0&redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html&client_id=web-client&client_secret=test-secret"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret&nonce=injected-should-be-ignored"
+              }
+            ]
+          }
+        },
+        {
+          "name": "configured issuer fixture claims + at+jwt header",
+          "status": "PASS",
+          "expected": "config-seeded claims + at+jwt typ",
+          "actual": "all match",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/configured/token",
+              "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+            }
+          }
+        },
+        {
+          "name": "at+jwt token self-verifies (jwks + userinfo + introspect)",
+          "status": "PASS",
+          "expected": "verify + userinfo 200 + introspect active:true",
+          "actual": "all pass",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/configured/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/configured/jwks"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/configured/userinfo",
+                "note": "Authorization: Bearer <token>"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/configured/introspect"
+              }
+            ]
+          }
+        },
+        {
+          "name": "scenario override is one-shot and reverts to default",
+          "status": "PASS",
+          "expected": "first token overridden (marker + 1200s exp), second reverted to default",
+          "actual": "override applied once then reverted",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/scenarios",
+                "body": "{\"issuer\":\"acme\",\"claims\":{\"scenario_marker\":\"once\"},\"expirySeconds\":1200}"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=web-client&client_secret=test-secret"
+              }
+            ]
+          }
+        },
+        {
+          "name": "requestMapping templates ${username} into a claim (password grant)",
+          "status": "PASS",
+          "expected": "mapped_user === 'carol' (templated from username)",
+          "actual": "carol",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/scenarios",
+                "body": "{\"issuer\":\"acme\",\"requestMappings\":[{\"param\":\"username\",\"match\":\"*\",\"claims\":{\"mapped_user\":\"${username}\"}}]}"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=password&username=carol&password=ignored&client_id=web-client&client_secret=test-secret&scope=openid+profile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "foreign typ token is rejected by userinfo and introspect",
+          "status": "PASS",
+          "expected": "userinfo 401 + introspect active:false",
+          "actual": "both reject the foreign typ",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/mint",
+                "body": "{\"issuer\":\"acme\",\"typ\":\"foo+jwt\",\"subject\":\"s\"}"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/userinfo",
+                "note": "Authorization: Bearer <foo+jwt token>"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/introspect"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "title": "Token Lifecycle",
+      "checks": [
+        {
+          "name": "userinfo returns the full claim set for a minted access token",
+          "status": "PASS",
+          "expected": "200 sub=u1 email=u1@x",
+          "actual": "200 sub=u1 email=u1@x",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/userinfo",
+              "body": "Authorization: Bearer <minted>"
+            },
+            "raw": "{\"email\":\"u1@x\",\"exp\":1783063287,\"iat\":1783059687,\"iss\":\"http://localhost:9080/acme\",\"jti\":\"82b65751-f4af-42f0-bf04-45c7f92ca730\",\"nbf\":1783059687,\"sub\":\"u1\",\"tid\":\"acme\"}\n"
+          }
+        },
+        {
+          "name": "userinfo with a garbage bearer \u2192 401 invalid_token + WWW-Authenticate",
+          "status": "PASS",
+          "expected": "401 invalid_token + WWW-Authenticate",
+          "actual": "401 invalid_token; Bearer error=\"invalid_token\"",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/userinfo",
+              "body": "Authorization: Bearer not-a-real-token"
+            },
+            "raw": "{\"error\":\"invalid_token\",\"error_description\":\"the access token is invalid\"}\n"
+          }
+        },
+        {
+          "name": "userinfo with no Authorization header \u2192 401",
+          "status": "PASS",
+          "expected": "401",
+          "actual": "401 (invalid_token)",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/userinfo",
+              "body": "(no Authorization header)"
+            },
+            "raw": "{\"error\":\"invalid_token\",\"error_description\":\"the access token is invalid\"}\n"
+          }
+        },
+        {
+          "name": "introspect a valid access token \u2192 active:true with typed claims",
+          "status": "PASS",
+          "expected": "active:true; Bearer; sub/iss; numeric exp/iat; aud string",
+          "actual": "active:true; sub=introspect-subject; aud=\"api-one\" (string)",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/introspect",
+              "body": {
+                "token": "<minted>"
+              }
+            },
+            "raw": "{\"active\":true,\"aud\":\"api-one\",\"exp\":1783063287,\"iat\":1783059687,\"iss\":\"http://localhost:9080/acme\",\"jti\":\"e3f5ff9f-07d8-44fb-a9c2-4676f562170f\",\"nbf\":1783059687,\"sub\":\"introspect-subject\",\"tid\":\"acme\",\"token_type\":\"Bearer\"}\n"
+          }
+        },
+        {
+          "name": "introspect a garbage token \u2192 200 {active:false}",
+          "status": "PASS",
+          "expected": "200 {active:false}",
+          "actual": "200 {active:false}",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/introspect",
+              "body": {
+                "token": "garbage-token"
+              }
+            },
+            "raw": "{\"active\":false}\n"
+          }
+        },
+        {
+          "name": "introspect with no token param \u2192 200 {active:false}",
+          "status": "PASS",
+          "expected": "200 {active:false}",
+          "actual": "200 {active:false}",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/introspect",
+              "body": "token_type_hint=access_token (no token param)"
+            },
+            "raw": "{\"active\":false}\n"
+          }
+        },
+        {
+          "name": "introspect with no Authorization header \u2192 400 invalid_client",
+          "status": "PASS",
+          "expected": "400 invalid_client",
+          "actual": "400 invalid_client",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/introspect",
+              "body": "token=anything (no Authorization)"
+            },
+            "raw": "{\"error\":\"invalid_client\",\"error_description\":\"client authentication required\"}\n"
+          }
+        },
+        {
+          "name": "revoke a refresh token then re-redeem it \u2192 400 invalid_grant",
+          "status": "PASS",
+          "expected": "revoke 200, then redeem 400 invalid_grant",
+          "actual": "revoke 200; redeem 400 invalid_grant",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme-revoke/token",
+                "body": {
+                  "grant_type": "authorization_code",
+                  "code": "<code>"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme-revoke/revoke",
+                "body": {
+                  "token": "<refresh>",
+                  "token_type_hint": "refresh_token"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme-revoke/token",
+                "body": {
+                  "grant_type": "refresh_token",
+                  "refresh_token": "<refresh>"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "revoke with token_type_hint=access_token \u2192 400 unsupported_token_type",
+          "status": "PASS",
+          "expected": "400 unsupported_token_type",
+          "actual": "400 unsupported_token_type",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/revoke",
+              "body": {
+                "token": "some-token",
+                "token_type_hint": "access_token"
+              }
+            },
+            "raw": "{\"error\":\"unsupported_token_type\",\"error_description\":\"unsupported token type: access_token\"}\n"
+          }
+        },
+        {
+          "name": "revoke an unknown refresh token (correct hint) \u2192 200 idempotent no-op",
+          "status": "PASS",
+          "expected": "200 (idempotent no-op)",
+          "actual": "200",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/revoke",
+              "body": {
+                "token": "<unknown>",
+                "token_type_hint": "refresh_token"
+              }
+            },
+            "raw": "{}\n"
+          }
+        },
+        {
+          "name": "endsession redirects to post_logout_redirect_uri carrying state",
+          "status": "PASS",
+          "expected": "callback.html?state=bye",
+          "actual": "http://localhost:9080/static/callback.html?state=bye",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/endsession?post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html&state=bye"
+            }
+          }
+        },
+        {
+          "name": "endsession redirect without state lands on callback with no state param",
+          "status": "PASS",
+          "expected": "callback.html, no state",
+          "actual": "http://localhost:9080/static/callback.html",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/endsession?post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html"
+            }
+          }
+        },
+        {
+          "name": "endsession without a redirect URI \u2192 200 \"logged out\" HTML",
+          "status": "PASS",
+          "expected": "200 HTML containing \"logged out\"",
+          "actual": "200 logged-out page",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/endsession"
+            },
+            "raw": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Logged out \u2014 mock-oidc</title>\n<style>\n  :root { color-scheme: light dark; }\n  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;\n         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;\n         background: #0f172a; color: #e2e8f0; padding: 1.5rem; }\n  main { width: 100%; m \u2026"
+          }
+        },
+        {
+          "name": "POST endsession honors query params, ignoring a conflicting body",
+          "status": "PASS",
+          "expected": "query wins: callback.html?state=q",
+          "actual": "http://localhost:9080/static/callback.html?state=q",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/endsession?post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A9080%2Fstatic%2Fcallback.html&state=q",
+              "body": "body: post_logout_redirect_uri=<decoy>&state=body-state"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "controlPlane",
+      "title": "Control Plane (/_mock)",
+      "checks": [
+        {
+          "name": "mint \u2261 grant: minted token verifies and userinfo echoes sub",
+          "status": "PASS",
+          "expected": "verifies + userinfo sub m1",
+          "actual": "kid=acme alg=RS256 sub=m1",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/mint",
+                "body": {
+                  "issuer": "acme",
+                  "subject": "m1"
+                }
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/jwks"
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/userinfo",
+                "note": "Bearer <minted>"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint reserved issuer ('_mock') \u2192 4xx problem",
+          "status": "PASS",
+          "expected": "status >= 400 problem",
+          "actual": "404 (no token)",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/_mock/mint",
+              "body": {
+                "issuer": "_mock",
+                "subject": "x"
+              }
+            },
+            "raw": "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"\\\"_mock\\\" collides with reserved prefix \\\"_mock\\\"\",\"errors\":[{\"message\":\"not_found: \\\"_mock\\\" collides with reserved prefix \\\"_mock\\\"\"}]}\n"
+          }
+        },
+        {
+          "name": "scenario is one-shot AND issuer-matched",
+          "status": "PASS",
+          "expected": "acme skips, beta consumes; depth 1\u21920",
+          "actual": "issuer-matched, single-use as expected",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/scenarios",
+                "body": {
+                  "issuer": "beta",
+                  "claims": {
+                    "iso_marker": "b"
+                  }
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": {
+                  "grant_type": "client_credentials",
+                  "client_id": "web-client",
+                  "client_secret": "test-secret"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/beta/token",
+                "body": {
+                  "grant_type": "client_credentials",
+                  "client_id": "web-client",
+                  "client_secret": "test-secret"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "scenario list/clear: depth 2 with issuer fields, DELETE \u2192 0",
+          "status": "PASS",
+          "expected": "depth 2 (issuer fields) \u2192 0",
+          "actual": "[acme, beta] \u2192 0",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/scenarios",
+                "body": [
+                  {
+                    "issuer": "acme",
+                    "claims": {
+                      "k": 1
+                    }
+                  },
+                  {
+                    "issuer": "beta",
+                    "claims": {
+                      "k": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/_mock/scenarios"
+              }
+            ]
+          }
+        },
+        {
+          "name": "capture list: token request appears with method/path",
+          "status": "PASS",
+          "expected": "count>=1, POST /acme/token",
+          "actual": "count=1, POST /acme/token",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": {
+                  "grant_type": "client_credentials",
+                  "client_id": "capture-list-probe",
+                  "client_secret": "x"
+                }
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/_mock/requests?issuer=acme&endpoint=token"
+              }
+            ]
+          }
+        },
+        {
+          "name": "capture take: bodyBase64 is byte-exact",
+          "status": "PASS",
+          "expected": "atob(bodyBase64) === exact body",
+          "actual": "byte-exact match",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/token",
+                "body": "grant_type=client_credentials&client_id=take-probe&x_marker=exact-bytes-9f3a&scope=alpha+beta"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/requests/take",
+                "body": {
+                  "timeoutMs": 3000,
+                  "issuer": "acme",
+                  "endpoint": "token"
+                }
+              }
+            ],
+            "note": "grant_type=client_credentials&client_id=take-probe&x_marker=exact-bytes-9f3a&scope=alpha+beta"
+          }
+        },
+        {
+          "name": "capture take on empty \u2192 404",
+          "status": "PASS",
+          "expected": "404 on empty match",
+          "actual": "404",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/_mock/requests/take",
+              "body": {
+                "timeoutMs": 500,
+                "issuer": "acme-empty",
+                "endpoint": "revoke"
+              }
+            }
+          }
+        },
+        {
+          "name": "self-isolation: control-plane calls are never captured",
+          "status": "PASS",
+          "expected": "no /_mock entries",
+          "actual": "0 entries, 0 under /_mock",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/_mock/requests"
+            }
+          }
+        },
+        {
+          "name": "clock freeze: token iat pins to the frozen instant",
+          "status": "PASS",
+          "expected": "iat === 1893456000",
+          "actual": "iat === 1893456000",
+          "detail": {
+            "req": [
+              {
+                "method": "PUT",
+                "url": "http://localhost:9080/_mock/clock",
+                "body": {
+                  "frozen": true,
+                  "instant": "2030-01-01T00:00:00Z"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/mint",
+                "body": {
+                  "issuer": "acme",
+                  "subject": "frozen"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock advance flips token expiry (introspect + userinfo)",
+          "status": "PASS",
+          "expected": "active true\u2192false, userinfo 401",
+          "actual": "expiry flipped as expected",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/mint",
+                "body": {
+                  "issuer": "acme",
+                  "subject": "expiry-flip"
+                }
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/acme/introspect",
+                "body": "token=<minted>"
+              },
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/clock/advance",
+                "body": {
+                  "duration": "2h"
+                }
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/acme/userinfo",
+                "note": "Bearer <expired>"
+              }
+            ]
+          }
+        },
+        {
+          "name": "clock unfreeze: frozen=false and a fresh token verifies",
+          "status": "PASS",
+          "expected": "frozen false + token verifies",
+          "actual": "frozen=false, verified",
+          "detail": {
+            "req": [
+              {
+                "method": "PUT",
+                "url": "http://localhost:9080/_mock/clock",
+                "body": {
+                  "frozen": false
+                }
+              },
+              {
+                "method": "GET",
+                "url": "http://localhost:9080/_mock/clock"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reset: clears scenarios+captures, unfreezes, KEEPS keys",
+          "status": "PASS",
+          "expected": "scenarios 0, requests 0, unfrozen, keys kept",
+          "actual": "reset cleared state and preserved keys",
+          "detail": {
+            "req": [
+              {
+                "method": "POST",
+                "url": "http://localhost:9080/_mock/reset"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "corsSec",
+      "title": "CORS, Errors & Static Guard",
+      "checks": [
+        {
+          "name": "CORS on POST reflects Origin (not *) + credentials",
+          "status": "PASS",
+          "expected": "ACAO=http://localhost:9080 + ACAC=true",
+          "actual": "ACAO=http://localhost:9080 + ACAC=true",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/acme/token"
+            },
+            "note": "HTTP 200; origin reflected verbatim, never *"
+          }
+        },
+        {
+          "name": "OPTIONS preflight \u2192 204 + Allow-Methods includes POST",
+          "status": "PASS",
+          "expected": "204 + Allow-Methods incl POST",
+          "actual": "204 + Allow-Methods=POST, GET, OPTIONS",
+          "detail": {
+            "req": {
+              "method": "OPTIONS",
+              "url": "http://localhost:9080/acme/token"
+            }
+          }
+        },
+        {
+          "name": "OPTIONS preflight echoes request headers \u2192 Allow-Headers",
+          "status": "SKIP",
+          "detail": {
+            "note": "Access-Control-Request-Headers is a forbidden request-header name \u2014 the browser strips it on fetch, so the server has nothing to echo into Access-Control-Allow-Headers. Verified out-of-band with curl."
+          }
+        },
+        {
+          "name": "405 on protocol path \u2192 OAuth2 error envelope (correct-case)",
+          "status": "PASS",
+          "expected": "405 + { error, error_description } (correct-case)",
+          "actual": "405 + error=invalid_request",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/token"
+            },
+            "note": "the method is not allowed for this resource"
+          }
+        },
+        {
+          "name": "404 on unknown protocol path \u2192 JSON error envelope",
+          "status": "PASS",
+          "expected": "404 + JSON error envelope",
+          "actual": "404 + problem+json { title,status,detail }",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/acme/nonexistent-endpoint"
+            },
+            "note": "unknown-endpoint 404 renders RFC-9457 problem+json"
+          }
+        },
+        {
+          "name": "reserved '_mock' prefix is not a usable issuer \u2192 404",
+          "status": "PASS",
+          "expected": "404 error 'not_found'",
+          "actual": "404 error 'not_found'",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/_mock/jwks"
+            },
+            "note": "\"_mock\" collides with reserved prefix \"_mock\""
+          }
+        },
+        {
+          "name": "control-plane error is problem+json (garbage clock advance)",
+          "status": "PASS",
+          "expected": "status \u2265 400 + application/problem+json",
+          "actual": "422 + application/problem+json",
+          "detail": {
+            "req": {
+              "method": "POST",
+              "url": "http://localhost:9080/_mock/clock/advance",
+              "body": "{\"duration\":\"not-a-duration\"}"
+            },
+            "note": "control/infra errors use RFC-9457 problem+json, never the OAuth2 shape"
+          }
+        },
+        {
+          "name": "static traversal guard ('..%2f') \u2192 404, no file leak",
+          "status": "PASS",
+          "expected": "404 + body without 'module github.com'",
+          "actual": "404 + no leak",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/static/..%2fgo.mod"
+            },
+            "note": "sent as /static/..%2fgo.mod"
+          }
+        },
+        {
+          "name": "static traversal guard ('%2e%2e%2f') \u2192 404",
+          "status": "PASS",
+          "expected": "404 + no config.json leak",
+          "actual": "404 + no leak",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/static/%2e%2e%2fconfig.json"
+            },
+            "note": "sent as /static/%2e%2e%2fconfig.json"
+          }
+        },
+        {
+          "name": "static serves no directory index \u2192 404",
+          "status": "PASS",
+          "expected": "404 + no listing",
+          "actual": "404 + no listing",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/static/"
+            }
+          }
+        },
+        {
+          "name": "metrics endpoint not on this listener \u2192 404 JSON",
+          "status": "PASS",
+          "expected": "404 + JSON envelope",
+          "actual": "404 + problem+json { title,status,detail }",
+          "detail": {
+            "req": {
+              "method": "GET",
+              "url": "http://localhost:9080/metrics"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "manual": [
+    {
+      "sectionId": "authorize",
+      "id": "login-page",
+      "name": "Interactive login page mints an id_token for the entered identity",
+      "instructions": "Click Start: a popup opens the login page at /{issuer}/authorize with prompt=login (scope openid profile, fresh state+nonce, redirect_uri=/static/callback.html). In the popup, enter username alice and Additional claims {\"email\":\"alice@example.com\"}, then Sign in. The popup lands on callback.html and posts the code back; Start exchanges it at /token and reports the id_token sub + email. PASS when sub is \"alice\" and email is \"alice@example.com\".",
+      "status": "PASS"
+    },
+    {
+      "sectionId": "authorize",
+      "id": "fragment-mode",
+      "name": "response_mode=fragment returns code+state in the URL fragment",
+      "instructions": "Click Start: a popup opens /{issuer}/authorize with response_mode=fragment and a fresh state. With interactive login off the server auto-issues the code in the URL fragment; callback.html reads location.hash and posts it back. PASS when Start reports code + matching state arrived via the fragment. (No form to fill.)",
+      "status": "PASS"
+    },
+    {
+      "sectionId": "authorize",
+      "id": "form-post-capture",
+      "name": "response_mode=form_post self-submits code+state to redirect_uri",
+      "instructions": "Click Start: capture is cleared, then a popup opens /{issuer}/authorize with response_mode=form_post and redirect_uri set to /{issuer}/userinfo. The self-submitting form POSTs code+state to /userinfo, which the control plane captures. Start takes that request and inspects its body. PASS when the captured /userinfo POST body contains \"code=\" and the generated state.",
+      "status": "PASS"
+    },
+    {
+      "sectionId": "authorize",
+      "id": "debugger-roundtrip",
+      "name": "Debugger completes a full authorize\u2192token round-trip",
+      "instructions": "Click Start (opens /{issuer}/debugger in a new window) or open it yourself, then submit the pre-filled debugger form. PASS when the result page reads \"Token exchange complete\" and shows access_token / id_token / refresh_token.",
+      "status": "PASS"
+    },
+    {
+      "sectionId": "corsSec",
+      "id": "cross-origin-cors",
+      "name": "Cross-origin CORS (reflect-origin + credentials)",
+      "instructions": "In the config panel, switch Base URL to a DIFFERENT origin that reaches this same server (e.g. http://127.0.0.1:<port> when the page is on http://localhost:<port>), then click the Discovery section Run button. Every discovery check must still PASS: a readable cross-origin response is only possible because the server reflects the Origin (never *) and sets Access-Control-Allow-Credentials: true. Switch Base URL back when done. Use Start to auto-probe the 127.0.0.1/localhost variant of this page origin.",
+      "status": "PASS"
+    }
+  ]
+}
