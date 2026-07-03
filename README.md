@@ -15,15 +15,36 @@ supply-chain/provenance baseline (pinned CI, signed multi-arch images, SBOMs).
 The server is built on [chi](https://github.com/go-chi/chi) and
 [Huma](https://huma.rocks), is DB-less, and boots with zero configuration.
 
-## Project status
+## What it does
 
-This repository is being built in vertical slices. The current tree is the
-**walking skeleton** (Slice 0): the transport, observability, CLI, and config
-boot in a container and serve only the infrastructure routes below. The OIDC
-domain (`internal/oidc`) is an empty, layering-gated hexagon; discovery, JWKS,
-and the token endpoints land in the following slices.
+Point an OAuth2/OIDC client at a running `mock-oidc` and it behaves like a real
+authorization server: it publishes discovery and a JWKS, and it mints **real,
+signed** ID tokens, access tokens, and refresh tokens for whatever identity the
+test asks for. Because the tokens verify against the served JWKS, an unmodified
+client library completes a full sign-in without knowing it is talking to a mock.
 
-Infrastructure routes served today:
+Everything is namespaced under an **issuer**, so one server can impersonate many
+identity providers. With zero configuration a single `default` issuer is served
+at `http://localhost:8080/default`, exposing the standard OAuth2/OIDC surface:
+
+| Route (per issuer) | Purpose |
+| --- | --- |
+| `/{issuer}/.well-known/openid-configuration` | OIDC discovery document |
+| `/{issuer}/.well-known/oauth-authorization-server` | RFC 8414 metadata (identical body) |
+| `/{issuer}/authorize` | authorization endpoint (auth-code, PKCE) |
+| `/{issuer}/token` | token endpoint (all grants) |
+| `/{issuer}/jwks` | signing key set (`kid=<issuer>`) |
+| `/{issuer}/userinfo` | UserInfo endpoint |
+| `/{issuer}/introspect` | RFC 7662 token introspection |
+| `/{issuer}/revoke` | RFC 7009 token revocation |
+| `/{issuer}/endsession` | RP-initiated logout |
+
+A test-time **control plane** is mounted at `/_mock` (direct token minting,
+clock control, scenario enqueueing, request capture); it is on by default and
+can be locked down with a token or disabled entirely — see
+[Configuration](#configuration).
+
+Infrastructure routes (outside any issuer):
 
 ```sh
 curl -sS localhost:8080/isalive   # liveness alias  => 200
@@ -52,15 +73,26 @@ toolchain itself. To bump a tool, edit its version in `mise.toml`, run
 
 ## Quickstart
 
-The server is DB-less and needs no configuration. Build and run it:
+The server is DB-less and needs no configuration. Run the published multi-arch
+image (see [Container image](#container-image) for how it is built and signed):
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/meigma/mock-oidc
+
+# Discovery for the zero-config `default` issuer:
+curl -sS localhost:8080/default/.well-known/openid-configuration
+#   => { "issuer": "http://localhost:8080/default", "token_endpoint": ..., "jwks_uri": ... }
+```
+
+Or build and run from source:
 
 ```sh
 moon run root:build          # or: go build -o bin/mock-oidc ./cmd/mock-oidc
 ./bin/mock-oidc serve        # serve is the default subcommand; listens on :8080
-curl -sS localhost:8080/isalive
+curl -sS localhost:8080/default/.well-known/openid-configuration
 ```
 
-Or run the shipped container (see [Container image](#container-image)):
+To build the container locally instead of pulling it:
 
 ```sh
 mise run image-local                       # build the host-arch image as mock-oidc:dev
@@ -100,23 +132,96 @@ default.
 | `--idle-timeout` | `MOCK_OIDC_IDLE_TIMEOUT` | `120s` | idle keep-alive connections |
 | `--request-timeout` | `MOCK_OIDC_REQUEST_TIMEOUT` | `15s` | per-request processing |
 | `--shutdown-grace` | `MOCK_OIDC_SHUTDOWN_GRACE` | `15s` | graceful shutdown window |
-| `--cors-allowed-origins` | `MOCK_OIDC_CORS_ALLOWED_ORIGINS` | _(none)_ | allowed CORS origins (comma-separated); empty disables CORS |
+| `--cors-allowed-origins` | `MOCK_OIDC_CORS_ALLOWED_ORIGINS` | _(none)_ | tightens CORS to an allowlist (comma-separated); empty reflects any origin (default-on) |
 | `--trusted-proxy-header` | `MOCK_OIDC_TRUSTED_PROXY_HEADER` | _(none)_ | proxy header to read the client IP from (e.g. `X-Real-IP`); empty trusts the TCP peer |
+| `--tls-cert-file` | `MOCK_OIDC_TLS_CERT_FILE` | _(none)_ | PEM certificate for HTTPS; paired with `--tls-key-file` |
+| `--tls-key-file` | `MOCK_OIDC_TLS_KEY_FILE` | _(none)_ | PEM private key for HTTPS; paired with `--tls-cert-file` |
+| `--control-enabled` | `MOCK_OIDC_CONTROL_ENABLED` | `true` | serve the `/_mock` test-control plane |
+| `--control-token` | `MOCK_OIDC_CONTROL_TOKEN` | _(none)_ | require this bearer token on `/_mock`; empty leaves it open |
 | `--rate-limit-enabled` | `MOCK_OIDC_RATE_LIMIT_ENABLED` | `false` | enable per-client rate limiting; **off by default** so test traffic is never throttled |
 | `--rate-limit-rps` | `MOCK_OIDC_RATE_LIMIT_RPS` | `10` | sustained per-client request rate (requests/second) |
 | `--rate-limit-burst` | `MOCK_OIDC_RATE_LIMIT_BURST` | `20` | per-client burst size (token-bucket depth) |
 | `--tracing-enabled` | `MOCK_OIDC_TRACING_ENABLED` | `false` | enable OpenTelemetry [tracing](#tracing); the OTLP exporter is configured via the standard `OTEL_*` env vars |
 
-For compatibility with the upstream `mock-oauth2-server`, the unprefixed
+For drop-in compatibility with the upstream `mock-oauth2-server`, the unprefixed
 `SERVER_HOSTNAME`, `SERVER_PORT`, `PORT`, `JSON_CONFIG`, `JSON_CONFIG_PATH`, and
-`LOG_LEVEL` environment variables are also bound (with `LOGBACK_CONFIG` accepted
-as a no-op). The seed/listen-address wiring that consumes the port and
-JSON-config aliases lands with the OIDC slices.
+`LOG_LEVEL` environment variables are also honored (with `LOGBACK_CONFIG`
+accepted as a no-op). The listen address is composed as `--addr` > explicit
+`SERVER_HOSTNAME`/`SERVER_PORT` > `PORT` > `:8080`, and the JSON config is loaded
+from `JSON_CONFIG` (inline JSON) > `JSON_CONFIG_PATH` > `./config.json`.
 
-CORS is off until you set origins. Client IP is read from the direct TCP peer
-unless you opt into a trusted proxy header — never from `X-Forwarded-For`
-implicitly — so the default is not spoofable. Rate limiting is **disabled by
-default** because a for-testing server is hammered by container-backed suites.
+**CORS is on by default.** With no allowlist the server reflects any request
+`Origin` back with `Access-Control-Allow-Credentials: true` and answers
+preflight `OPTIONS` with `204` — so a browser-based client works out of the box.
+Setting `--cors-allowed-origins` tightens reflection to exactly those origins.
+The `"*"` wildcard is never emitted; the origin is echoed verbatim.
+
+Client IP is read from the direct TCP peer unless you opt into a trusted proxy
+header — never from `X-Forwarded-For` implicitly — so the default is not
+spoofable. Rate limiting is **disabled by default** because a for-testing server
+is hammered by container-backed suites.
+
+### JSON configuration
+
+Beyond flags and env vars, the server accepts the upstream `mock-oauth2-server`
+JSON config shape (loaded from `JSON_CONFIG`/`JSON_CONFIG_PATH`/`./config.json`).
+It declares issuers, per-request token callbacks, a `staticAssetsPath`, and the
+`httpServer.ssl` TLS block — unknown keys are ignored for lenient parity. See
+[TLS](#tls) for the `ssl` shape.
+
+### TLS
+
+The server terminates HTTPS on the API listener when TLS is enabled (the
+`/metrics` and `/_mock` listeners stay plain HTTP). There are two ways to turn it
+on:
+
+- Supply your own certificate with `--tls-cert-file` / `--tls-key-file` (both
+  required together).
+- Ask for an in-process **self-signed `localhost`** certificate — matching
+  upstream's `ssl:{}` behavior — by adding an `ssl` block to the JSON config:
+
+  ```json
+  { "httpServer": { "ssl": {} } }
+  ```
+
+  ```sh
+  JSON_CONFIG='{"httpServer":{"ssl":{}}}' ./bin/mock-oidc serve
+  curl -k https://localhost:8080/default/.well-known/openid-configuration
+  #   => every advertised URL (issuer, *_endpoint, jwks_uri) is https
+  ```
+
+  The generated cert has SANs `localhost`, `127.0.0.1`, and `::1`. It is for
+  local testing only; pass `-k`/`--insecure` (or trust it) in clients.
+
+### Running behind a proxy or in Docker
+
+Every URL the server advertises — the discovery `issuer`, every `*_endpoint`,
+and `jwks_uri` — is derived **per request** from `X-Forwarded-Proto`,
+`X-Forwarded-Host`, and `X-Forwarded-Port` (falling back to the `Host` header),
+resolved to the host root. Terminate TLS at a reverse proxy and the advertised
+identity follows the external address automatically:
+
+```sh
+curl -s -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-Host: idp.example.com' \
+     -H 'X-Forwarded-Port: 443' \
+     localhost:8080/default/.well-known/openid-configuration
+#   => issuer and all endpoints are https://idp.example.com/default
+```
+
+This matters for containerized tests where the **browser** and the **application
+under test** must reach the mock at the *same* issuer URL. On Docker Desktop,
+run the container with `--add-host=host.docker.internal:host-gateway`, publish
+`-p 8080:8080`, and have both the browser (on the host) and the app (in a
+sibling container) use `http://host.docker.internal:8080/default` as the issuer,
+so the advertised `iss` equals the reachable address for both.
+
+### Named parity gap: nested issuers
+
+Issuer IDs are **single-segment** only: `mock-oidc` routes `/{issuer}/…` and
+rejects any issuer value containing a `/`. This is equivalent-in-intent to
+upstream for the common single-segment case, but it **cannot** represent an
+Azure-style deeply-nested issuer path (`tenant/v2.0/...`). This is a conscious,
+documented divergence, not a silent one.
 
 ## Tracing
 
@@ -143,10 +248,9 @@ provider is flushed on graceful shutdown.
 ## Testing
 
 Unit tests sit beside the code and use [Testify](https://github.com/stretchr/testify)
-(`assert` / `require`). Outbound-port doubles are **mockery-generated** testify
-mocks, drift-guarded by `moon run root:mockery-check`. The OIDC hexagon has no
-ports yet, so `.mockery.yaml` `packages:` is empty; later slices repoint it at
-`internal/oidc`.
+(`assert` / `require`). The outbound ports of the OIDC core (`internal/oidc`)
+are doubled with **mockery-generated** testify mocks in `internal/oidc/mocks`,
+drift-guarded by `moon run root:mockery-check`.
 
 The domain core's layering is enforced two ways: the `oidc-core` depguard rule in
 `.golangci.yml` and the `TestCoreImportsAreClean` architecture test — both fail if
@@ -284,6 +388,26 @@ container release lifecycle. The release path is:
 
 The root `ghd.toml` matches the default GoReleaser output so the binary can be
 installed with `ghd` once the release workflow runs.
+
+### Verifying released artifacts
+
+Both the binaries and the container image carry SLSA provenance attestations
+(generated in the isolated `attest.yml` workflow), and the image is additionally
+signed with keyless cosign. Verify them before use:
+
+```sh
+# Container image — provenance attestation (GitHub-native):
+gh attestation verify oci://ghcr.io/meigma/mock-oidc:vX.Y.Z --repo meigma/mock-oidc
+
+# Container image — keyless cosign signature:
+cosign verify ghcr.io/meigma/mock-oidc:vX.Y.Z \
+  --certificate-identity-regexp '^https://github.com/meigma/mock-oidc/.github/workflows/release.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# Downloaded release binary — provenance attestation:
+gh attestation verify ./mock-oidc_X.Y.Z_<os>_<arch> --repo meigma/mock-oidc \
+  --signer-workflow meigma/mock-oidc/.github/workflows/attest.yml
+```
 
 ## Contributing
 
