@@ -78,6 +78,12 @@ type Seed struct {
 	// tokens without a runtime scenario. Empty → every issuer is zero-config
 	// (materialized on demand with the built-in default callback).
 	IssuerRecords []oidc.IssuerRecord
+
+	// LoginTemplates carries the config-declared named principals (a mock-oidc
+	// extension). The composition root hands them to the AuthorizeService (headless
+	// login_hint resolution) and the httpapi login page (pre-fill dropdown). Empty
+	// → login_hint is ignored and no dropdown renders.
+	LoginTemplates oidc.LoginTemplates
 }
 
 // DefaultSeed is the zero-config seed used when no JSON config is present.
@@ -99,6 +105,10 @@ type document struct {
 	// enqueue-scenario DTO accepts, so a callback described as JSON parses
 	// identically whether it arrives at startup (here) or at runtime (/_mock).
 	TokenCallbacks []callbackDoc `json:"tokenCallbacks"`
+	// LoginTemplates is the declarative named-principal list (a mock-oidc
+	// extension; upstream has no equivalent key). Each entry is selectable on the
+	// login page and resolvable headlessly via login_hint.
+	LoginTemplates []loginTemplateDoc `json:"loginTemplates"`
 	// HTTPServer mirrors upstream's httpServer field (a bare string or an object
 	// carrying an optional `ssl` block). Its presence with an ssl object turns
 	// HTTPS on; the concrete server type is otherwise ignored.
@@ -159,6 +169,14 @@ type requestMappingDoc struct {
 	Match      string         `json:"match"`
 	TypeHeader string         `json:"typeHeader"`
 	Claims     map[string]any `json:"claims"`
+}
+
+// loginTemplateDoc is one declarative login template: a named principal
+// ({name, subject, claims}) selectable on the login page or via login_hint.
+type loginTemplateDoc struct {
+	Name    string         `json:"name"`
+	Subject string         `json:"subject"`
+	Claims  map[string]any `json:"claims"`
 }
 
 type tokenProviderDoc struct {
@@ -256,7 +274,37 @@ func (d document) toSeed() (Seed, error) {
 	}
 	seed.IssuerRecords = records
 
+	templates, err := toLoginTemplates(d.LoginTemplates)
+	if err != nil {
+		return Seed{}, err
+	}
+	seed.LoginTemplates = templates
+
 	return seed, nil
+}
+
+// toLoginTemplates maps the declarative template entries onto the domain
+// constructors (oidc.NewLoginTemplate per entry, oidc.NewLoginTemplates for the
+// unique-name invariant), so a bad template — blank name/subject, malformed
+// claims, duplicate name — fails startup with an index-tagged error.
+func toLoginTemplates(docs []loginTemplateDoc) (oidc.LoginTemplates, error) {
+	if len(docs) == 0 {
+		return oidc.LoginTemplates{}, nil
+	}
+
+	templates := make([]oidc.LoginTemplate, 0, len(docs))
+	for i, d := range docs {
+		claims, err := oidc.NewClaimSet(d.Claims)
+		if err != nil {
+			return oidc.LoginTemplates{}, fmt.Errorf("loginTemplates[%d]: %w", i, err)
+		}
+		t, err := oidc.NewLoginTemplate(d.Name, oidc.Subject(d.Subject), claims.Custom)
+		if err != nil {
+			return oidc.LoginTemplates{}, fmt.Errorf("loginTemplates[%d]: %w", i, err)
+		}
+		templates = append(templates, t)
+	}
+	return oidc.NewLoginTemplates(templates...)
 }
 
 // toIssuerRecords groups the declarative callbacks by issuer into IssuerRecords,

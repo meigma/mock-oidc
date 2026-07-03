@@ -338,16 +338,18 @@ func buildWiring(o options, logger *slog.Logger, selfAddr string) (wiring, error
 		oidc.WithRefreshRotation(o.seed.RotateRefreshToken),
 		oidc.WithCallbackQueue(queue),
 	)
-	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin)
+	authorize := oidc.NewAuthorizeService(codes, clock, o.seed.InteractiveLogin,
+		oidc.WithLoginTemplates(o.seed.LoginTemplates))
 	session := oidc.NewSessionService(sign, refresh, clock)
 
 	registerOIDC := httpapi.Registrar(httpapi.Deps{
-		Provider:  provider,
-		Tokens:    tokens,
-		Authorize: authorize,
-		Session:   session,
-		Logger:    logger,
-		SelfAddr:  selfAddr,
+		Provider:       provider,
+		Tokens:         tokens,
+		Authorize:      authorize,
+		Session:        session,
+		Logger:         logger,
+		SelfAddr:       selfAddr,
+		LoginTemplates: o.seed.LoginTemplates,
 	})
 
 	// The mutable memory.Clock satisfies controlapi.ClockController. A test-injected
