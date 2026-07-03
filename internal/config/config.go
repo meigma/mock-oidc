@@ -82,8 +82,9 @@ type Config struct {
 	LogLevel string
 	// LogFormat selects the slog handler (json or text).
 	LogFormat string
-	// CORSAllowedOrigins lists the origins permitted by the CORS middleware.
-	// Empty (the default) disables CORS entirely.
+	// CORSAllowedOrigins tightens the CORS middleware to an exact allowlist;
+	// empty (the default) keeps the default-ON reflect-any-origin behavior
+	// (Decision D-3).
 	CORSAllowedOrigins []string
 	// TrustedProxyHeader names a proxy-set header (for example X-Real-IP) to
 	// read the client IP from. Empty (the default) trusts only the direct TCP
