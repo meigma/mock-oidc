@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,10 +17,24 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// imageTag is the exact tag produced by `mise run image-local`. The R3 smoke
-// test consumes this image; if it is absent on the Docker host the test skips
-// loudly so a CI job without the pre-built image still passes.
-const imageTag = "mock-oidc:dev"
+// imageTag is the image the R3 suite drives. It defaults to the local
+// `mise run image-local` output (mock-oidc:dev) and can be overridden via
+// MOCK_OIDC_IMAGE so the same suite runs against the published
+// ghcr.io/meigma/mock-oidc artifact in Slice 6's R4 gate. If the image is
+// absent on the Docker host each test skips loudly so a CI job without the
+// pre-built image still passes.
+//
+//nolint:gochecknoglobals // resolved once from MOCK_OIDC_IMAGE; shared by every R3 test
+var imageTag = resolveImageTag()
+
+// resolveImageTag reads MOCK_OIDC_IMAGE, falling back to the local mock-oidc:dev
+// tag produced by `mise run image-local`.
+func resolveImageTag() string {
+	if v := strings.TrimSpace(os.Getenv("MOCK_OIDC_IMAGE")); v != "" {
+		return v
+	}
+	return "mock-oidc:dev"
+}
 
 // bannerMarker is the load-bearing fragment of the for-testing-only positioning
 // banner (app.bootBanner). Container logs must carry it (C10).
