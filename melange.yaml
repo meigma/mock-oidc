@@ -7,7 +7,7 @@
 # workflow and the `image-local` mise task), so no date math runs inside the sandbox.
 package:
   name: mock-oidc
-  version: "1.0.4" # x-release-please-version
+  version: "0.0.0" # x-release-please-version
   epoch: 0
   description: Standalone mock OIDC/OAuth2 authorization server for testing
   copyright:
