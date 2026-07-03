@@ -1,0 +1,180 @@
+/* console.css — small, readable styling for the webtest acceptance console.
+   Light + dark via color-scheme; status pills for PASS/FAIL/SKIP. */
+
+:root {
+  color-scheme: light dark;
+  --bg: Canvas;
+  --fg: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 55%, Canvas);
+  --border: color-mix(in srgb, CanvasText 20%, Canvas);
+  --card: color-mix(in srgb, CanvasText 4%, Canvas);
+  --accent: #3b6ef5;
+  --pass-bg: #157347;
+  --fail-bg: #b02a37;
+  --skip-bg: #6c757d;
+  --ok-bg: color-mix(in srgb, #157347 22%, Canvas);
+  --err-bg: color-mix(in srgb, #b02a37 22%, Canvas);
+  --probe-bg: color-mix(in srgb, #6c757d 22%, Canvas);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  padding: 1rem;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.05rem; margin: 0; }
+h3 { font-size: .95rem; margin: 1rem 0 .5rem; }
+.muted { color: var(--muted); }
+.mono, code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.banner {
+  padding: .6rem .8rem;
+  border-radius: 6px;
+  margin: .5rem 0 1rem;
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.banner.ok { background: var(--ok-bg); }
+.banner.err { background: var(--err-bg); }
+.banner.probing { background: var(--probe-bg); }
+
+/* Config panel */
+#config-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: .6rem;
+  padding: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  margin-bottom: 1rem;
+}
+.field { display: flex; flex-direction: column; gap: .2rem; }
+.field label { font-size: .8rem; color: var(--muted); }
+.field input {
+  padding: .35rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: 1rem;
+}
+
+button {
+  font: inherit;
+  padding: .4rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .6; cursor: default; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+#tally { display: inline-flex; gap: .35rem; align-items: center; margin-left: auto; }
+
+/* Pills */
+.pill {
+  display: inline-block;
+  padding: .1rem .5rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .02em;
+}
+.pill.pass { background: var(--pass-bg); }
+.pill.fail { background: var(--fail-bg); }
+.pill.skip { background: var(--skip-bg); }
+.pill.pending { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+
+/* Section cards */
+.section-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: .8rem;
+  margin-bottom: 1rem;
+}
+.section-head { display: flex; align-items: center; gap: .8rem; }
+.section-head h2 { flex: 0 1 auto; }
+.mini-tally { color: var(--muted); font-size: .85rem; }
+.mini-tally.has-fail { color: var(--fail-bg); font-weight: 700; }
+.section-head .run-section { margin-left: auto; }
+.section-mount { margin: .6rem 0; }
+
+/* Results table */
+table.results {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: .6rem;
+  display: block;
+  overflow-x: auto;
+}
+table.results th, table.results td {
+  text-align: left;
+  padding: .35rem .5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.results th { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.c-name { min-width: 220px; }
+.c-expected, .c-actual { max-width: 260px; font-size: .82rem; white-space: pre-wrap; word-break: break-word; }
+.detail-toggle { padding: .15rem .5rem; font-size: .78rem; }
+.detail-row td { background: color-mix(in srgb, CanvasText 6%, Canvas); }
+.detail-pre {
+  margin: 0;
+  padding: .5rem;
+  font-size: .78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* Manual checks */
+.manual { margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: .5rem; }
+.manual-item { padding: .5rem 0; border-bottom: 1px dashed var(--border); }
+.manual-name { font-weight: 600; }
+.manual-instructions { color: var(--muted); margin: .2rem 0 .4rem; white-space: pre-wrap; }
+.manual-out { margin: .4rem 0; padding: .5rem; font-size: .78rem; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; white-space: pre-wrap; }
+.tri { display: inline-flex; gap: .3rem; margin-top: .3rem; }
+.tri-btn { opacity: .7; }
+.tri-btn.active { opacity: 1; color: #fff; font-weight: 700; }
+.tri-btn.pass.active { background: var(--pass-bg); border-color: var(--pass-bg); }
+.tri-btn.fail.active { background: var(--fail-bg); border-color: var(--fail-bg); }
+.tri-btn.skip.active { background: var(--skip-bg); border-color: var(--skip-bg); }
+
+/* Export output */
+#export-output {
+  margin-top: 1rem;
+  padding: .6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: .78rem;
+}
+#export-output:empty { display: none; }

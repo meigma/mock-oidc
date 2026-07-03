@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  webtest acceptance console — FOR TESTING ONLY, not a product.
+  Served by the mock OIDC server at /static/index.html. Never open via file://.
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>mock-oidc · webtest console</title>
+<link rel="stylesheet" href="./css/console.css" />
+
+<header>
+  <h1>mock-oidc · webtest acceptance console</h1>
+  <p class="muted">Repo-local browser acceptance checks. For testing only — not a product.</p>
+  <div id="status-banner" class="banner probing">Checking control plane…</div>
+</header>
+
+<section id="config-panel" aria-label="Configuration">
+  <div class="field">
+    <label for="cfg-base">Base URL</label>
+    <input id="cfg-base" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="field">
+    <label for="cfg-issuer">Issuer</label>
+    <input id="cfg-issuer" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="field">
+    <label for="cfg-issuer2">Issuer 2 (isolation)</label>
+    <input id="cfg-issuer2" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="field">
+    <label for="cfg-configuredIssuer">Configured issuer</label>
+    <input id="cfg-configuredIssuer" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="field">
+    <label for="cfg-clientId">Client ID</label>
+    <input id="cfg-clientId" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="field">
+    <label for="cfg-controlToken">Control token</label>
+    <input id="cfg-controlToken" type="text" spellcheck="false" autocomplete="off" />
+  </div>
+</section>
+
+<div class="toolbar">
+  <button id="run-all" class="primary">Run all</button>
+  <button id="export-json">Export JSON</button>
+  <button id="export-md">Export Markdown</button>
+  <span id="tally"></span>
+</div>
+
+<main id="sections"></main>
+
+<pre id="export-output" aria-label="Export output"></pre>
+
+<script type="module" src="./lib/app.js"></script>

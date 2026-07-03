@@ -1,0 +1,22 @@
+{
+  "interactiveLogin": false,
+  "rotateRefreshToken": false,
+  "staticAssetsPath": "webtest",
+  "tokenProvider": {
+    "keyProvider": {
+      "algorithm": "RS256"
+    }
+  },
+  "tokenCallbacks": [
+    {
+      "issuer": "configured",
+      "subject": "config-seeded-subject",
+      "audience": ["config-audience"],
+      "typ": "at+jwt",
+      "expirySeconds": 3600,
+      "claims": {
+        "config_marker": "from-config"
+      }
+    }
+  ]
+}
