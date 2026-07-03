@@ -1,72 +1,81 @@
 ---
-title: mock-oidc Docs
+title: Home
+description: Standalone, container-first mock OIDC/OAuth2 authorization server for testing.
 slug: /
-description: Standalone mock OIDC/OAuth2 authorization server for testing.
 ---
 
 # mock-oidc
 
-`mock-oidc` is a standalone, container-first **mock OIDC/OAuth2 authorization
-server for testing**. It issues real, cryptographically-verifiable tokens for
-arbitrary identities so a test suite can exercise a full sign-in flow against an
-unmodified OAuth2/OIDC client — no real identity provider required. It is a Go
-reimplementation of [navikt/mock-oauth2-server](https://github.com/navikt/mock-oauth2-server)
-built on chi + Huma, with a hexagonal architecture and a strong supply-chain
-baseline.
+`mock-oidc` is a standalone, container-first mock OIDC/OAuth2 authorization
+server **for testing only**. It mints real, cryptographically-signed tokens for
+arbitrary identities, so a test suite can drive a full sign-in against an
+unmodified OAuth2/OIDC client with no real identity provider. It is a Go
+reimplementation of [navikt/mock-oauth2-server](https://github.com/navikt/mock-oauth2-server),
+is DB-less, and boots with zero configuration.
 
 !!! warning "For testing only"
-    mock-oidc mints signed tokens for any identity on request. It must never
-    front production traffic; the server logs this positioning banner on every
-    startup.
+    mock-oidc signs a token for any identity on request and never validates
+    client secrets. It must never front production traffic; the server logs a
+    "FOR TESTING ONLY" banner on every startup.
 
-## What it does
+## 30 seconds to a token
 
-Point an OAuth2/OIDC client at a running `mock-oidc` and it behaves like a real
-authorization server: it publishes discovery and a JWKS and mints real, signed
-tokens for any identity, all namespaced under an **issuer**. With zero
-configuration a single `default` issuer is served at
-`http://localhost:8080/default`, exposing discovery, `authorize`, `token`,
-`jwks`, `userinfo`, `introspect`, `revoke`, and `endsession`. A test-time
-control plane is mounted at `/_mock`.
-
-## Quick start
-
-The server is DB-less and needs no configuration. Run the published container:
+The server needs no configuration. Run the published container, read discovery
+for the zero-config `default` issuer, and mint an access token:
 
 ```sh
 docker run --rm -p 8080:8080 ghcr.io/meigma/mock-oidc
-curl -sS localhost:8080/default/.well-known/openid-configuration
-#   => { "issuer": "http://localhost:8080/default", ... }
+
+# Discovery for the "default" issuer (materializes on first touch)
+curl -sS http://localhost:8080/default/.well-known/openid-configuration
+#   => {"issuer":"http://localhost:8080/default", ...}
+
+# client_credentials grant — client secrets are never validated
+curl -sS -X POST http://localhost:8080/default/token \
+  -d grant_type=client_credentials \
+  -d client_id=test-client \
+  -d scope=api
+#   => {"token_type":"Bearer","access_token":"eyJ...","expires_in":3600, ...}
 ```
 
-Or build and run from source:
+## Find your way
 
-```sh
-moon run root:build          # or: go build -o bin/mock-oidc ./cmd/mock-oidc
-./bin/mock-oidc serve        # serve is the default subcommand; listens on :8080
-```
+This site follows the [Diátaxis](https://diataxis.fr/) framework. Pick the
+section that matches what you need right now.
 
-See the [README](https://github.com/meigma/mock-oidc#readme) for the full
-configuration reference, including TLS (`httpServer.ssl`), running behind a
-proxy / `host.docker.internal`, the named nested-issuer parity gap, and
-artifact verification.
+- **Learning the tool** — Start with the tutorial,
+  [Your first mock sign-in](tutorials/first-mock-sign-in.md), a guided
+  end-to-end run.
 
-## API reference
+- **Getting a specific task done** — The [how-to guides](how-to/get-tokens-for-every-grant.md)
+  are goal-oriented recipes:
+  [get tokens for every grant](how-to/get-tokens-for-every-grant.md),
+  [drive the authorization-code flow](how-to/drive-the-authorization-code-flow.md),
+  [shape token claims](how-to/shape-token-claims.md),
+  [simulate expiry and time](how-to/simulate-expiry-and-time.md),
+  [capture and assert requests](how-to/capture-and-assert-requests.md),
+  [use multiple issuers](how-to/use-multiple-issuers.md),
+  [serve over TLS](how-to/serve-over-tls.md),
+  [run behind a proxy or in Docker](how-to/run-behind-a-proxy-or-in-docker.md),
+  [lock down the control plane](how-to/lock-down-the-control-plane.md),
+  [migrate from mock-oauth2-server](how-to/migrate-from-mock-oauth2-server.md),
+  and [verify released artifacts](how-to/verify-released-artifacts.md).
 
-The [API Reference](api.md) is generated from the OpenAPI specification. A
-running server also serves interactive docs at `/docs` and the live spec at
-`/openapi.yaml`.
+- **Looking something up** — The reference pages describe the software exactly:
+  [Configuration](reference/configuration.md),
+  [Tokens and claims](reference/tokens-and-claims.md),
+  [Control plane (`/_mock`)](reference/control-plane.md),
+  [CLI](reference/cli.md),
+  [Observability](reference/observability.md), and the
+  [API Reference](api.md).
 
-## Operating notes
-
-- Liveness: `GET /isalive` (upstream-parity alias) and `GET /healthz`
-- Readiness: `GET /readyz` (reports named per-check results; the server is
-  DB-less, so it is unconditionally ready)
-- Metrics: `GET /metrics` on a dedicated listener (`--metrics-addr`, default `:9090`)
-- Configuration is via flags or `MOCK_OIDC_*` environment variables; the
-  server boots with zero configuration.
+- **Understanding why** — The explanation pages cover design and rationale:
+  [the security model](explanation/security-model.md),
+  [issuers and advertised identity](explanation/issuers-and-identity.md),
+  [parity with mock-oauth2-server](explanation/parity.md), and
+  [architecture and distribution](explanation/architecture-and-distribution.md).
 
 ## Support and security
 
-- Issues and contributions: see [CONTRIBUTING.md](https://github.com/meigma/mock-oidc/blob/master/CONTRIBUTING.md).
-- Security reports: see [SECURITY.md](https://github.com/meigma/mock-oidc/blob/master/SECURITY.md).
+- Contributions and issues: [CONTRIBUTING.md](https://github.com/meigma/mock-oidc/blob/master/CONTRIBUTING.md)
+- Security reports: [SECURITY.md](https://github.com/meigma/mock-oidc/blob/master/SECURITY.md)
