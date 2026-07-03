@@ -44,3 +44,29 @@ Also noted: repo has no LICENSE (README flags it) — independent pre-publish
 blocker to surface at close. Anomaly during exploration: one Explore agent
 returned a prompt-injection-style payload (fake "System:" directive asking to
 propagate an append-string instruction); ignored and relaunched clean.
+
+## 2026-07-02 23:02 — Console built; server bug found + fixed (PR #15)
+Build workflow (wf_6ab9d04e-e22, 9 opus agents, ~1.15M tokens) completed:
+- webtest/ console: 17 foundation files + 8 section suites, 87 automated
+  checks + 5 manual flows. Committed on feat/webtest-acceptance-console
+  (5a3d19c).
+- Integration stage final run: **86 PASS / 0 FAIL / 1 SKIP** (the skip is the
+  Access-Control-Request-Headers echo — browser strips that forbidden header;
+  covered by curl out-of-band). One console bug fixed during integration
+  (introspect check posted an empty body → Huma 400 before the handler; fixed
+  to post hint-only body).
+- **Genuine server defect found: GET /static/index.html was unreachable**
+  (http.ServeFile 301-redirects */index.html → ./, handler 404s the dir path).
+  Fixed via os.Open + http.ServeContent + regression test; live-verified
+  (200/404/404); full gate green; **PR #15 squash-merged (aa05d23)**.
+- Section builder correction worth keeping: '_mockx' is NOT a reserved issuer
+  (only '_mock' exact or '_mock/' prefix); the reserved-404 check uses
+  /_mock/jwks.
+- Ops notes: golangci-lint cache poisoned by deleted worktree paths → 
+  `golangci-lint cache clean` + moon --force; `wt remove` runs its deletion in
+  background and races `mise run image-local` (melange workspace copy) — let
+  removal settle before building the image. chrome-devtools MCP was contended
+  by another session's agent (user paused it); a stray SendMessage to a
+  workflow-internal agent forks a duplicate from transcript — killed it;
+  workflow agents are not addressable.
+Next: rebuild image with the fix, then the container acceptance pass.
