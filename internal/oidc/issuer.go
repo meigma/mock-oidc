@@ -36,6 +36,13 @@ type IssuerID string
 // invalid_request (400, wrapping ErrInvalidIssuer); reserved-prefix collision ->
 // not_found (404, wrapping ErrReservedIssuer). It is the single issuer
 // constructor across every section.
+//
+// Named parity gap (Decision D-2): issuer IDs are SINGLE-SEGMENT only. Rejecting
+// any value containing '/' means an Azure-style nested issuer (tenant/sub/default)
+// cannot be represented — the '/{issuer}/…' form is equivalent-in-intent for the
+// common single-segment case but not for deeply-nested issuers. This is a
+// conscious, documented divergence, surfaced (400 invalid_request) rather than
+// silently mishandled.
 func ParseIssuerID(s string) (IssuerID, error) {
 	switch {
 	case s == "":
