@@ -50,6 +50,10 @@ Parity in intent also means being honest about intent *not* shared. Several upst
 
 **No arbitrary raw-response injection.** There is no facility to make the server return a hand-crafted, non-conforming raw HTTP response. mock-oidc's job is to behave like a *correct* identity provider, and every response it emits goes through the same token and error machinery so that what your client receives is internally consistent — a token that verifies, an error in the right envelope with the right status. An escape hatch for injecting arbitrary bytes would undermine that guarantee, and the legitimate need behind it — shaping what a specific token or callback contains — is already met by scenarios and minting.
 
+## Beyond parity
+
+Parity was the v0.1.0 bar, not the ceiling. Where mock-oidc grows past upstream, it does so with keys upstream never defined — so an upstream config keeps loading unchanged and a mock-oidc config degrades gracefully (upstream ignores unknown keys too). The first such extension is [`loginTemplates`](../reference/configuration.md): named login principals that the login page offers as a pre-fill dropdown and that automated suites select headlessly via the standard `login_hint` parameter, in place of upstream's static custom-login-page file. See [Log in with login templates](../how-to/log-in-with-login-templates.md).
+
 ## The shape of the trade
 
 Taken together, these choices describe a tool that is faithful to upstream's *reason for existing* and unsentimental about its *implementation history*. You get the behaviour a correct OAuth2/OIDC client expects, the defects quietly fixed, and a smaller, more honest feature set with the sharp edges labelled rather than hidden. For most suites the practical result is that swapping the servers changes almost nothing in your application code; where it does, the difference is a bug you no longer have to work around, or a gap you were told about in advance.

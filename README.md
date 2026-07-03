@@ -20,6 +20,8 @@ reimplementation of [navikt/mock-oauth2-server](https://github.com/navikt/mock-o
   materialize on first touch — no registration step.
 - A `/_mock` control plane to mint tokens directly, freeze or advance the clock,
   enqueue one-shot scenarios, and capture inbound requests for assertions.
+- Login templates: config-defined named principals, selectable on the login page
+  or headlessly via `login_hint` — predictable identities for automated suites.
 - Drop-in compatibility with `mock-oauth2-server`: the same unprefixed
   environment variables and the same JSON configuration shape.
 - Zero-config and DB-less — it boots instantly and serves a `default` issuer.
@@ -66,6 +68,7 @@ by what you need:
 - **Do** — task-focused how-to guides:
   [get tokens for every grant](https://meigma.github.io/mock-oidc/how-to/get-tokens-for-every-grant/),
   [drive the authorization-code flow](https://meigma.github.io/mock-oidc/how-to/drive-the-authorization-code-flow/),
+  [log in with login templates](https://meigma.github.io/mock-oidc/how-to/log-in-with-login-templates/),
   [shape token claims](https://meigma.github.io/mock-oidc/how-to/shape-token-claims/),
   [simulate expiry and time](https://meigma.github.io/mock-oidc/how-to/simulate-expiry-and-time/),
   [capture and assert requests](https://meigma.github.io/mock-oidc/how-to/capture-and-assert-requests/),
