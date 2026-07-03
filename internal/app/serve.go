@@ -8,16 +8,20 @@ import (
 	"net/http"
 )
 
-// namedServer pairs an [http.Server] with a label used in log lines.
+// namedServer pairs an [http.Server] with a label used in log lines. tls marks
+// the listener that terminates HTTPS: only the API server does, so the metrics
+// and control listeners stay plain HTTP (operational surfaces, not the OIDC
+// contract).
 type namedServer struct {
 	server *http.Server
 	name   string
+	tls    bool
 }
 
 // servers returns the servers to run: the API server and, when a metrics-addr is
-// configured, the dedicated metrics server.
+// configured, the dedicated metrics server. Only the API server terminates TLS.
 func (a *App) servers() []namedServer {
-	servers := []namedServer{{server: a.server, name: "http server"}}
+	servers := []namedServer{{server: a.server, name: "http server", tls: a.tlsCertFile != ""}}
 	if a.metricsServer != nil {
 		servers = append(servers, namedServer{server: a.metricsServer, name: "metrics server"})
 	}
@@ -26,6 +30,16 @@ func (a *App) servers() []namedServer {
 	}
 
 	return servers
+}
+
+// listen serves the given server over TLS when a certificate is configured, else
+// plain HTTP. resolveTLS ensures the cert/key files exist before New returns, so
+// by here they are always present when tls is set.
+func (a *App) listen(s namedServer) error {
+	if s.tls {
+		return s.server.ListenAndServeTLS(a.tlsCertFile, a.tlsKeyFile)
+	}
+	return s.server.ListenAndServe()
 }
 
 // Run starts the configured HTTP servers and blocks until ctx is cancelled or a
@@ -40,9 +54,10 @@ func (a *App) Run(ctx context.Context) error {
 	serveErr := make(chan error, len(servers))
 	for _, s := range servers {
 		go func() {
-			a.logger.InfoContext(ctx, s.name+" listening", slog.String("addr", s.server.Addr))
+			a.logger.InfoContext(ctx, s.name+" listening",
+				slog.String("addr", s.server.Addr), slog.Bool("tls", s.tls))
 
-			err := s.server.ListenAndServe()
+			err := a.listen(s)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				serveErr <- fmt.Errorf("%s: %w", s.name, err)
 
