@@ -192,3 +192,30 @@ paused for human review per instruction.** Docs branch worktree still present
 (.wt/docs-diataxis-site) until the PR lands.
 Open release chain still pending the user: merge #23 (v0.1.0 draft). #24 is
 independent of #23.
+
+## 2026-07-03 10:58 — v0.1.0 SHIPPED: docs + release merged, full pipeline verified
+- **#24 (docs) merged** (b96725f); worktree removed.
+- **#23 (release) merged** (b97dc99) → release-please pushed tag **v0.1.0** →
+  release.yml run 28676000496: **all 8 jobs green** (resolve, binary assets,
+  melange amd64+arm64, container image, attest-binaries, attest-image, summary).
+- VERIFIED END-TO-END (not just green checks):
+  * Draft release v0.1.0 has all 9 assets (4 binaries + 4 SBOMs + checksums.txt).
+  * Image is a real multi-arch OCI index (linux/amd64 + linux/arm64), digest
+    sha256:be058ab8...
+  * cosign keyless verify PASSES against the release.yml identity (+ SPDX SBOM
+    attestation).
+  * Image SLSA provenance attestation SAN = attest.yml@refs/tags/v0.1.0 (proves
+    the L3 isolation — signed by the isolated attest workflow, not the build
+    job); negative control (wrong repo) fails.
+  * Binary provenance verifies against attest.yml signer-workflow; negative
+    control (wrong signer) fails.
+  * Pulled the published image: reports "mock-oidc 0.1.0 (b97dc99...)", boots,
+    serves discovery, logs the FOR TESTING ONLY banner, openapi works.
+- Non-fatal: the attest-image job logged annotations about
+  "artifact-metadata:write permission" / "no artifacts found" storage-record
+  warnings, but the attestations WERE created and verify correctly — cosmetic,
+  worth a later look at the workflow's artifact-metadata permission.
+- **The GitHub release is still a DRAFT (by design — human inspects before
+  publish). Publishing it is the final step, left to the user.**
+- Session goal complete: server accepted, docs shipped, v0.1.0 released end to
+  end and provenance-verified. Ready for session close.
