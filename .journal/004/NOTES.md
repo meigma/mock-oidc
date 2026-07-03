@@ -106,3 +106,14 @@ ghcr.io/meigma/mock-oidc:v0.1.1
 `gh attestation verify` OK with wrong-repo negative control rejected.
 Published-image smoke test with mounted config: /isalive OK, headless
 login_hint flow OK, dropdown rendered OK, binary stamps 0.1.1/877166c.
+
+## 2026-07-03 13:20 — Close
+Session complete. PR #25 (feature, `7c976bd`) and PR #26 (release 0.1.1,
+`877166c`) are squash-merged; local master fast-forwarded to `877166c`; the
+`feat/login-templates` worktree removed. Tag `v0.1.1` released and verified
+(attestation + negative control, published-image smoke test); the GitHub
+release is a DRAFT awaiting Josh's publish (v0.1.0 is published). SUMMARY.md
+written; INDEX.md row set to complete; TECH_NOTES.md updated (v0.1.1 facts,
+feat→patch pre-1.0 versioning knob, chrome-devtools profile-lock gotcha).
+Hand-off: nothing in flight; next candidates are publishing the v0.1.1 draft
+and the carried open threads (attest-image permission, app-id deprecation).

@@ -58,8 +58,8 @@
   file://). Full report: `.journal/003/acceptance-report.md`.
 - **v0.1.0 RELEASED (2026-07-03, session 003):** `master` at `b97dc99`, tag `v0.1.0`,
   image `ghcr.io/meigma/mock-oidc:v0.1.0` (multi-arch, cosign-signed, SLSA provenance
-  for binary + image, verified). The GitHub release is still a DRAFT pending a human
-  publish. Repo is dual-licensed **Apache-2.0 OR MIT** (LICENSE-APACHE/LICENSE-MIT).
+  for binary + image, verified). Published. Repo is dual-licensed
+  **Apache-2.0 OR MIT** (LICENSE-APACHE/LICENSE-MIT).
   Docs are now a Diátaxis MkDocs site under `docs/docs/` (tutorial/how-to/reference/
   explanation) with a slim ~120-line README; contributor detail lives in CONTRIBUTING.md.
 - **Release-chain facts for future maintainers:** there is intentionally NO `ghd.toml`
@@ -86,6 +86,22 @@
   fix with `mise x -- golangci-lint cache clean`. `wt remove` deletes in the
   background via `.git/wt/trash/` and races `mise run image-local` (melange
   snapshots the repo incl. trash) — wait for `.git/wt/trash/` to empty first.
+- **v0.1.1 RELEASED (2026-07-03, session 004) — first beyond-parity feature: login
+  templates.** Config key `loginTemplates` (`{name, subject, claims}`, global,
+  config-only): login-page pre-fill dropdown + headless resolution via standard
+  `login_hint` (template beats interactiveLogin/prompt=login; unknown name = hard
+  invalid_request while templates configured; ignored when none). Domain type in
+  `internal/oidc/logintemplate.go`; both paths funnel into `LoginSubmission`, so
+  template claims use login-claim merge semantics. PR #25 `7c976bd`; release PR #26
+  `877166c`; the v0.1.1 GitHub release is a DRAFT pending human publish. Docs:
+  `how-to/log-in-with-login-templates.md` + "Beyond parity" in explanation/parity.md.
+- **Versioning gotcha:** release-please config sets `bump-patch-for-minor-pre-major:
+  true`, so pre-1.0 `feat` commits bump PATCH (that is why login templates shipped
+  as 0.1.1, not 0.2.0). Change that knob if features should bump minor pre-1.0.
+- **Ops gotcha (2026-07-03, session 004):** an orphaned chrome-devtools MCP Chrome
+  holds the profile lock and every MCP call fails with "browser already running";
+  clear with `pkill -f 'chrome-devtools-mcp/chrome-profile'` (MCP-owned automation
+  profile, never the user's browser).
 - Technical design: `.journal/001/mock-oidc-technical-design.md` — normative build
   blueprint. Hexagonal Go reusing the template's Huma/chi base; core domain pkg
   `internal/oidc` (pure) + driven adapters `internal/oidc/{signing,memory}` + driving
