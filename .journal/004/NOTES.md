@@ -83,3 +83,10 @@ MCP automation Chrome held the chrome-devtools profile lock; pkill -f
 'chrome-devtools-mcp/chrome-profile' cleared it.
 
 PR: https://github.com/meigma/mock-oidc/pull/25 (awaiting review/merge).
+
+## 2026-07-03 12:55 — PR #25 merged
+All CI checks green (release dry-runs skipped as expected on a non-release
+branch). Squash-merged as `7c976bd` "feat(oidc): add login templates for
+interactive and headless login (#25)"; remote branch deleted, local master
+pulled, worktree removed via `wt remove`. Feature is on master. Session goal
+(investigate + deliver a template system) is complete pending session close.
