@@ -63,6 +63,43 @@ func TestLoadSeedInlineJSON(t *testing.T) {
 	assert.JSONEq(t, `{"kty":"RSA","kid":"seed-a"}`, string(seed.InitialKeys[0]))
 }
 
+// TestLoadSeedTLSFromHTTPServer verifies that an httpServer.ssl object (even
+// empty) sets TLSFromHTTPServer, while a bare-string or ssl-less httpServer, and
+// an absent httpServer, leave it off (upstream ssl:{} parity).
+func TestLoadSeedTLSFromHTTPServer(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		json string
+		want bool
+	}{
+		{"empty ssl object enables TLS", `{"httpServer":{"ssl":{}}}`, true},
+		{"populated ssl object enables TLS", `{"httpServer":{"type":"NettyWrapper","ssl":{"keyPassword":"x"}}}`, true},
+		{"httpServer without ssl stays off", `{"httpServer":{"type":"MockWebServerWrapper"}}`, false},
+		{"bare-string httpServer stays off", `{"httpServer":"MockWebServerWrapper"}`, false},
+		{"null ssl stays off", `{"httpServer":{"ssl":null}}`, false},
+		{"absent httpServer stays off", `{"interactiveLogin":true}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			vp := viper.New()
+			vp.Set("json-config", tc.json)
+			seed, err := config.LoadSeed(vp)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, seed.TLSFromHTTPServer)
+		})
+	}
+}
+
+// TestDefaultSeedTLSOff verifies the zero-config seed does not request TLS.
+func TestDefaultSeedTLSOff(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, config.DefaultSeed().TLSFromHTTPServer)
+}
+
 // TestLoadSeedInteractiveLogin verifies the top-level interactiveLogin flag
 // parses into the seed, forcing GET /authorize to render the login page.
 func TestLoadSeedInteractiveLogin(t *testing.T) {
@@ -121,6 +158,32 @@ func TestLoadSeedRotateRefreshTokenDefaultsFalse(t *testing.T) {
 	seed, err := config.LoadSeed(vp)
 	require.NoError(t, err)
 	assert.False(t, seed.RotateRefreshToken, "absent rotateRefreshToken defaults to false")
+}
+
+// TestLoadSeedStaticAssetsPath verifies the top-level staticAssetsPath parses
+// into the seed (trimmed) so the composition root can mount the /static tree.
+func TestLoadSeedStaticAssetsPath(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"staticAssetsPath": "  /srv/assets  "}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/assets", seed.StaticAssetsPath, "staticAssetsPath honored and trimmed")
+}
+
+// TestLoadSeedStaticAssetsPathDefaultsEmpty verifies an absent staticAssetsPath
+// leaves the /static tree unmounted (zero-config default).
+func TestLoadSeedStaticAssetsPathDefaultsEmpty(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Empty(t, seed.StaticAssetsPath, "absent staticAssetsPath stays empty")
 }
 
 // TestDefaultSeedRotateRefreshTokenFalse verifies the zero-config seed leaves

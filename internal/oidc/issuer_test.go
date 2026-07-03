@@ -93,6 +93,61 @@ func TestResolveBaseURL(t *testing.T) {
 		assert.Equal(t, "https://auth.example.com", base.String())
 	})
 
+	t.Run("forwarded port overrides host port", func(t *testing.T) {
+		t.Parallel()
+
+		base, err := oidc.ResolveBaseURL(oidc.RequestOrigin{
+			Scheme: oidc.SchemeHTTPS, Host: "h", Port: 8080, FwdPort: "9443",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "https://h:9443", base.String())
+	})
+
+	t.Run("forwarded host with embedded port does not double the authority", func(t *testing.T) {
+		t.Parallel()
+
+		base, err := oidc.ResolveBaseURL(oidc.RequestOrigin{
+			Scheme: oidc.SchemeHTTPS, Host: "internal", Port: 8080, FwdHost: "idp.example.com:8443",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "https://idp.example.com:8443", base.String())
+		assert.Equal(t, "https://idp.example.com:8443/default", base.IssuerURL("default"))
+	})
+
+	t.Run("explicit forwarded port outranks the forwarded host port", func(t *testing.T) {
+		t.Parallel()
+
+		base, err := oidc.ResolveBaseURL(oidc.RequestOrigin{
+			Scheme: oidc.SchemeHTTPS, Host: "internal", FwdHost: "idp.example.com:8443", FwdPort: "9443",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "https://idp.example.com:9443", base.String())
+	})
+
+	t.Run("scheme default port is omitted when no port is present", func(t *testing.T) {
+		t.Parallel()
+
+		https, err := oidc.ResolveBaseURL(oidc.RequestOrigin{Scheme: oidc.SchemeHTTPS, Host: "h"})
+		require.NoError(t, err)
+		assert.Equal(t, "https://h", https.String())
+
+		httpBase, err := oidc.ResolveBaseURL(oidc.RequestOrigin{Scheme: oidc.SchemeHTTP, Host: "h"})
+		require.NoError(t, err)
+		assert.Equal(t, "http://h", httpBase.String())
+	})
+
+	t.Run("issuer url is host-rooted regardless of request depth", func(t *testing.T) {
+		t.Parallel()
+
+		// The origin carries no path, and IssuerURL joins the issuer segment at the
+		// host root — a request to a deep path still advertises a host-root iss.
+		base, err := oidc.ResolveBaseURL(oidc.RequestOrigin{
+			Scheme: oidc.SchemeHTTPS, Host: "idp.example.com", FwdPort: "443",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "https://idp.example.com/default", base.IssuerURL("default"))
+	})
+
 	t.Run("malformed forwarded port is an error", func(t *testing.T) {
 		t.Parallel()
 

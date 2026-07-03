@@ -19,30 +19,37 @@ baseline.
     front production traffic; the server logs this positioning banner on every
     startup.
 
-## Project status
+## What it does
 
-The current tree is the walking skeleton (Slice 0): the transport, observability,
-CLI, and config boot in a container and serve only the infrastructure routes
-below. The OIDC domain is an empty, layering-gated hexagon; discovery, JWKS, and
-the token endpoints land in the following slices.
+Point an OAuth2/OIDC client at a running `mock-oidc` and it behaves like a real
+authorization server: it publishes discovery and a JWKS and mints real, signed
+tokens for any identity, all namespaced under an **issuer**. With zero
+configuration a single `default` issuer is served at
+`http://localhost:8080/default`, exposing discovery, `authorize`, `token`,
+`jwks`, `userinfo`, `introspect`, `revoke`, and `endsession`. A test-time
+control plane is mounted at `/_mock`.
 
 ## Quick start
 
-The server is DB-less and needs no configuration. Build and run it, or run the
-shipped container:
+The server is DB-less and needs no configuration. Run the published container:
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/meigma/mock-oidc
+curl -sS localhost:8080/default/.well-known/openid-configuration
+#   => { "issuer": "http://localhost:8080/default", ... }
+```
+
+Or build and run from source:
 
 ```sh
 moon run root:build          # or: go build -o bin/mock-oidc ./cmd/mock-oidc
 ./bin/mock-oidc serve        # serve is the default subcommand; listens on :8080
-curl -sS localhost:8080/isalive
-
-# or the container:
-mise run image-local
-docker run --rm -p 8080:8080 -p 9090:9090 mock-oidc:dev
 ```
 
 See the [README](https://github.com/meigma/mock-oidc#readme) for the full
-quickstart and the configuration reference.
+configuration reference, including TLS (`httpServer.ssl`), running behind a
+proxy / `host.docker.internal`, the named nested-issuer parity gap, and
+artifact verification.
 
 ## API reference
 
@@ -53,8 +60,8 @@ running server also serves interactive docs at `/docs` and the live spec at
 ## Operating notes
 
 - Liveness: `GET /isalive` (upstream-parity alias) and `GET /healthz`
-- Readiness: `GET /readyz` (reports named per-check results; empty and
-  unconditionally ready in the skeleton — the server is DB-less)
+- Readiness: `GET /readyz` (reports named per-check results; the server is
+  DB-less, so it is unconditionally ready)
 - Metrics: `GET /metrics` on a dedicated listener (`--metrics-addr`, default `:9090`)
 - Configuration is via flags or `MOCK_OIDC_*` environment variables; the
   server boots with zero configuration.

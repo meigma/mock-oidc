@@ -29,6 +29,64 @@ func TestLoadDefaults(t *testing.T) {
 	assert.True(t, cfg.ControlEnabled, "the /_mock control plane is ON by default")
 	assert.Empty(t, cfg.ControlAddr, "control plane co-locates on the API listener by default")
 	assert.Empty(t, cfg.ControlToken, "the control-token gate is disabled by default")
+	assert.False(t, cfg.TLSEnabled, "plain HTTP by default")
+	assert.Empty(t, cfg.TLSCertFile, "no TLS cert by default")
+	assert.Empty(t, cfg.TLSKeyFile, "no TLS key by default")
+}
+
+// TestLoadListenAddrComposition verifies the SERVER_PORT/PORT precedence composes
+// the listen address, and that an explicit --addr overrides it.
+func TestLoadListenAddrComposition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("server-hostname and server-port compose", func(t *testing.T) {
+		t.Parallel()
+		vp := viper.New()
+		vp.Set("server-hostname", "0.0.0.0")
+		vp.Set("server-port", 9123)
+		assert.Equal(t, "0.0.0.0:9123", Load(vp).Addr)
+	})
+
+	t.Run("empty hostname yields wildcard host", func(t *testing.T) {
+		t.Parallel()
+		vp := viper.New()
+		vp.Set("server-port", 7000)
+		assert.Equal(t, ":7000", Load(vp).Addr)
+	})
+
+	t.Run("explicit addr wins over port", func(t *testing.T) {
+		t.Parallel()
+		vp := viper.New()
+		vp.Set("addr", ":5555")
+		vp.Set("server-port", 9123)
+		assert.Equal(t, ":5555", Load(vp).Addr)
+	})
+}
+
+// TestValidateTLSPairing verifies the cert-and-key-together rule.
+func TestValidateTLSPairing(t *testing.T) {
+	t.Parallel()
+
+	base := Config{Addr: ":8080", RequestTimeout: time.Second, ShutdownGrace: time.Second, LogFormat: "json"}
+
+	certOnly := base
+	certOnly.TLSCertFile = "/x/cert.pem"
+	require.Error(t, certOnly.Validate(), "cert without key must fail")
+
+	keyOnly := base
+	keyOnly.TLSKeyFile = "/x/key.pem"
+	require.Error(t, keyOnly.Validate(), "key without cert must fail")
+
+	both := base
+	both.TLSCertFile = "/x/cert.pem"
+	both.TLSKeyFile = "/x/key.pem"
+	require.NoError(t, both.Validate(), "cert and key together is valid")
+
+	// TLSEnabled with no files is valid at this layer: the OR happens after
+	// Validate and self-signs in New.
+	enabledNoFiles := base
+	enabledNoFiles.TLSEnabled = true
+	require.NoError(t, enabledNoFiles.Validate())
 }
 
 func TestLoadControlFromFlags(t *testing.T) {

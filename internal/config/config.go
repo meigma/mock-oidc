@@ -6,6 +6,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,7 +16,10 @@ import (
 )
 
 const (
-	defaultAddr              = ":8080"
+	defaultAddr = ":8080"
+	// defaultServerPort is the listen port when neither --addr nor a hostname/port
+	// pair is set. It composes with the empty default hostname into ":8080".
+	defaultServerPort        = 8080
 	defaultMetricsAddr       = ":9090"
 	defaultReadTimeout       = 5 * time.Second
 	defaultReadHeaderTimeout = 5 * time.Second
@@ -77,13 +82,25 @@ type Config struct {
 	LogLevel string
 	// LogFormat selects the slog handler (json or text).
 	LogFormat string
-	// CORSAllowedOrigins lists the origins permitted by the CORS middleware.
-	// Empty (the default) disables CORS entirely.
+	// CORSAllowedOrigins tightens the CORS middleware to an exact allowlist;
+	// empty (the default) keeps the default-ON reflect-any-origin behavior
+	// (Decision D-3).
 	CORSAllowedOrigins []string
 	// TrustedProxyHeader names a proxy-set header (for example X-Real-IP) to
 	// read the client IP from. Empty (the default) trusts only the direct TCP
 	// peer, which cannot be spoofed.
 	TrustedProxyHeader string
+	// TLSEnabled turns on HTTPS. It is set from the JSON config's `ssl` object
+	// (even empty) by runServe, ORed after Validate. When enabled with empty
+	// TLSCertFile/TLSKeyFile, the composition root generates an in-process
+	// self-signed localhost certificate (upstream ssl:{} parity).
+	TLSEnabled bool
+	// TLSCertFile is the PEM certificate served for HTTPS. Empty with TLS enabled
+	// triggers self-signed localhost generation; a non-empty value must be paired
+	// with TLSKeyFile.
+	TLSCertFile string
+	// TLSKeyFile is the PEM private key paired with TLSCertFile.
+	TLSKeyFile string
 	// RateLimitEnabled is the rate-limiting master switch. It defaults to false:
 	// a for-testing OIDC server should not throttle Testcontainers traffic. When
 	// false the rate-limit middleware is inert (pass-through).
@@ -116,7 +133,13 @@ type Config struct {
 // RegisterFlags declares the server configuration flags on flags. Binding them
 // to a Viper instance makes flags, environment variables, and defaults compose.
 func RegisterFlags(flags *pflag.FlagSet) {
-	flags.String("addr", defaultAddr, "host:port the HTTP server listens on")
+	flags.String("addr", "", "host:port to listen on; overrides --server-hostname/--server-port when set")
+	flags.String(
+		"server-hostname",
+		"",
+		"bind interface; empty binds the wildcard address (env SERVER_HOSTNAME)",
+	)
+	flags.Int("server-port", defaultServerPort, "listen port (env SERVER_PORT > PORT > 8080)")
 	flags.String(
 		"metrics-addr",
 		defaultMetricsAddr,
@@ -136,6 +159,12 @@ func RegisterFlags(flags *pflag.FlagSet) {
 		"",
 		"proxy header to read the client IP from (for example X-Real-IP); empty trusts the TCP peer",
 	)
+	flags.String(
+		"tls-cert-file",
+		"",
+		"PEM certificate for HTTPS; empty with TLS enabled generates a self-signed localhost cert",
+	)
+	flags.String("tls-key-file", "", "PEM private key for HTTPS; paired with --tls-cert-file")
 	flags.Bool(
 		"rate-limit-enabled",
 		defaultRateLimitEnabled,
@@ -170,7 +199,7 @@ func Load(vp *viper.Viper) Config {
 	setDefaults(vp)
 
 	return Config{
-		Addr:               vp.GetString("addr"),
+		Addr:               resolveListenAddr(vp),
 		MetricsAddr:        vp.GetString("metrics-addr"),
 		ReadTimeout:        vp.GetDuration("read-timeout"),
 		ReadHeaderTimeout:  vp.GetDuration("read-header-timeout"),
@@ -182,6 +211,8 @@ func Load(vp *viper.Viper) Config {
 		LogFormat:          vp.GetString("log-format"),
 		CORSAllowedOrigins: vp.GetStringSlice("cors-allowed-origins"),
 		TrustedProxyHeader: vp.GetString("trusted-proxy-header"),
+		TLSCertFile:        vp.GetString("tls-cert-file"),
+		TLSKeyFile:         vp.GetString("tls-key-file"),
 		RateLimitEnabled:   vp.GetBool("rate-limit-enabled"),
 		RateLimitRPS:       vp.GetFloat64("rate-limit-rps"),
 		RateLimitBurst:     vp.GetInt("rate-limit-burst"),
@@ -190,6 +221,19 @@ func Load(vp *viper.Viper) Config {
 		ControlAddr:        vp.GetString("control-addr"),
 		ControlToken:       vp.GetString("control-token"),
 	}
+}
+
+// resolveListenAddr applies the address precedence: an explicit --addr (or
+// MOCK_OIDC_ADDR) wins; otherwise the effective address is composed from
+// server-hostname and server-port (fed by SERVER_HOSTNAME and the
+// SERVER_PORT > PORT alias chain). viper's IsSet is false for values that come
+// only from defaults, so an unset --addr falls through to composition, yielding
+// ":8080" with the stock defaults.
+func resolveListenAddr(vp *viper.Viper) string {
+	if vp.IsSet("addr") {
+		return vp.GetString("addr")
+	}
+	return net.JoinHostPort(vp.GetString("server-hostname"), strconv.Itoa(vp.GetInt("server-port")))
 }
 
 // Validate checks that the configuration is internally consistent.
@@ -217,6 +261,9 @@ func (c Config) Validate() error {
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("log-format must be %q or %q, got %q", "json", "text", c.LogFormat)
 	}
+	if err := c.validateTLS(); err != nil {
+		return err
+	}
 	if c.RateLimitEnabled {
 		if c.RateLimitRPS <= 0 {
 			return errors.New("rate-limit-rps must be positive when rate limiting is enabled")
@@ -229,8 +276,22 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// validateTLS enforces that an explicit cert and key are supplied together. TLS
+// may still be enabled with neither (the self-signed path); only a lone cert or
+// lone key is invalid.
+func (c Config) validateTLS() error {
+	certSet, keySet := c.TLSCertFile != "", c.TLSKeyFile != ""
+	if certSet != keySet {
+		return errors.New("tls-cert-file and tls-key-file must be set together")
+	}
+	return nil
+}
+
 func setDefaults(vp *viper.Viper) {
-	vp.SetDefault("addr", defaultAddr)
+	// addr has no default: an unset addr composes from server-hostname/server-port
+	// in resolveListenAddr, which yields ":8080" from the port default below.
+	vp.SetDefault("server-hostname", "")
+	vp.SetDefault("server-port", defaultServerPort)
 	vp.SetDefault("metrics-addr", defaultMetricsAddr)
 	vp.SetDefault("read-timeout", defaultReadTimeout)
 	vp.SetDefault("read-header-timeout", defaultReadHeaderTimeout)
@@ -242,6 +303,8 @@ func setDefaults(vp *viper.Viper) {
 	vp.SetDefault("log-format", defaultLogFormat)
 	vp.SetDefault("cors-allowed-origins", []string{})
 	vp.SetDefault("trusted-proxy-header", "")
+	vp.SetDefault("tls-cert-file", "")
+	vp.SetDefault("tls-key-file", "")
 	vp.SetDefault("rate-limit-enabled", defaultRateLimitEnabled)
 	vp.SetDefault("rate-limit-rps", defaultRateLimitRPS)
 	vp.SetDefault("rate-limit-burst", defaultRateLimitBurst)

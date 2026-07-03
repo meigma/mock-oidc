@@ -356,6 +356,72 @@ func TestCORSAllowlistTightens(t *testing.T) {
 	assert.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
 }
 
+// TestCORSPreflightAnyPathBareOptions verifies the zero-config default answers a
+// bare OPTIONS preflight (no Access-Control-Request-Method, as the DoD acceptance
+// curl sends) with 204 on any path, reflecting the Origin, enabling credentials,
+// and echoing the requested headers into Access-Control-Allow-Headers.
+func TestCORSPreflightAnyPathBareOptions(t *testing.T) {
+	t.Parallel()
+
+	srv := corsTestServer(t, nil)
+
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodOptions, srv.URL+"/default/token", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "http://app.test")
+	req.Header.Set("Access-Control-Request-Headers", "authorization")
+
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+	assert.Empty(t, body, "preflight carries no body")
+	assert.Equal(t, "http://app.test", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
+	assert.Equal(t, "authorization", resp.Header.Get("Access-Control-Allow-Headers"))
+}
+
+// TestStaticWildcardMounted verifies a configured StaticHandler is reachable at
+// the multi-segment /static/* wildcard (chi matches the literal /static segment
+// ahead of any dynamic route), and that a nil StaticHandler leaves /static
+// unmounted (the default 404 fallback answers).
+func TestStaticWildcardMounted(t *testing.T) {
+	t.Parallel()
+
+	discard := observability.NewLogger(io.Discard, slog.LevelError, "json")
+
+	var gotPath string
+	sentinel := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusTeapot)
+	})
+	handler := NewRouter(RouterDeps{
+		Logger:         discard,
+		Metrics:        observability.NewMetrics(),
+		Version:        "test",
+		RequestTimeout: testRequestTimeout,
+		StaticHandler:  sentinel,
+	})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/css/app.css", nil))
+	assert.Equal(t, http.StatusTeapot, rec.Code, "the /static/* wildcard reaches the handler")
+	assert.Equal(t, "/static/css/app.css", gotPath, "multi-segment path is preserved for the handler")
+
+	// With no StaticHandler, /static falls through to the RFC 9457 404 fallback.
+	bare := NewRouter(RouterDeps{
+		Logger:         discard,
+		Metrics:        observability.NewMetrics(),
+		Version:        "test",
+		RequestTimeout: testRequestTimeout,
+	})
+	rec = httptest.NewRecorder()
+	bare.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/css/app.css", nil))
+	assert.Equal(t, http.StatusNotFound, rec.Code, "no static tree when unconfigured")
+}
+
 func corsTestServer(t *testing.T, origins []string) *httptest.Server {
 	t.Helper()
 

@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meigma/mock-oidc/internal/config"
 )
 
 const (
@@ -79,4 +81,41 @@ func TestParityEnvAliases(t *testing.T) {
 	require.NoError(t, root.ExecuteContext(context.Background()))
 
 	assert.Equal(t, "debug", vp.GetString("log-level"))
+}
+
+// bindViaRoot runs the root command's config init (PersistentPreRunE →
+// initializeConfig) so the env-parity BindEnv calls are applied, then returns the
+// viper instance for Load.
+func bindViaRoot(t *testing.T) *viper.Viper {
+	t.Helper()
+	vp := viper.New()
+	root := NewRootCommand(Options{Build: testBuild(), Viper: vp})
+	root.SetArgs([]string{"version"})
+	require.NoError(t, root.ExecuteContext(context.Background()))
+	return vp
+}
+
+// TestParityServerPortResolvesAddr verifies the SERVER_PORT > PORT > 8080
+// precedence resolves the listen address through the bound env aliases.
+func TestParityServerPortResolvesAddr(t *testing.T) {
+	t.Setenv("SERVER_PORT", "9123")
+	t.Setenv("PORT", "7000")
+
+	cfg := config.Load(bindViaRoot(t))
+	assert.Equal(t, ":9123", cfg.Addr, "SERVER_PORT wins over PORT and composes the listen addr")
+}
+
+// TestParityPortFallback verifies PORT resolves the listen address when
+// SERVER_PORT is absent.
+func TestParityPortFallback(t *testing.T) {
+	t.Setenv("PORT", "7000")
+
+	cfg := config.Load(bindViaRoot(t))
+	assert.Equal(t, ":7000", cfg.Addr, "PORT composes the listen addr when SERVER_PORT is unset")
+}
+
+// TestParityDefaultPort verifies the zero-env default remains :8080.
+func TestParityDefaultPort(t *testing.T) {
+	cfg := config.Load(bindViaRoot(t))
+	assert.Equal(t, ":8080", cfg.Addr, "no port env falls back to :8080")
 }

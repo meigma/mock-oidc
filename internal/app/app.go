@@ -49,6 +49,12 @@ type App struct {
 	controlServer *http.Server
 	logger        *slog.Logger
 	grace         time.Duration
+	// tlsCertFile and tlsKeyFile are the cert/key the API listener serves over
+	// HTTPS. Both empty ⇒ plain HTTP. resolveTLS fills them (from explicit files
+	// or a generated self-signed pair) so listen() always finds files when TLS is
+	// on. The metrics and control listeners stay plain HTTP regardless.
+	tlsCertFile string
+	tlsKeyFile  string
 	// rateLimiter is the in-process rate limiter whose janitor goroutine is
 	// stopped during graceful shutdown. It is nil when rate limiting is disabled.
 	rateLimiter *ratelimit.InMemory
@@ -108,6 +114,13 @@ func New(
 	}
 
 	logger.WarnContext(ctx, bootBanner)
+
+	// Resolve the TLS material before wiring so a self-signed localhost cert is
+	// generated once, up front, when ssl:{} (or --tls-cert-file) asked for HTTPS.
+	tlsCertFile, tlsKeyFile, err := resolveTLS(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve TLS: %w", err)
+	}
 
 	// Build the OIDC hexagon over the in-memory + signing adapters, plus the shared
 	// recorder/queue/clock the control plane also drives. Signing construction parses
@@ -171,6 +184,7 @@ func New(
 		RequestTimeout:       cfg.RequestTimeout,
 		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
 		TrustedProxyHeader:   cfg.TrustedProxyHeader,
+		StaticHandler:        staticFileHandler(o.seed),
 		// No DB ⇒ no readiness checks ⇒ /readyz is unconditionally ready.
 		Readiness: nil,
 		// Mount the OIDC protocol operations (discovery, JWKS, token) built above.
@@ -183,22 +197,7 @@ func New(
 		InstallRateLimit: installRateLimit,
 	})
 
-	// Mux-level request recording wraps the whole handler; it path-guards to the
-	// protocol families, so /_mock and the infra routes are never recorded — the
-	// control plane can never observe itself. It is installed ONLY when the control
-	// plane is enabled: recording exists solely to serve the control plane's
-	// takeRequest/requests inspection, so with control off it would buffer bodies
-	// into a log nothing can read or drain. When co-located, the control gate +
-	// testing-only header wrap outermost, scoped to /_mock.
-	handler := router
-	if cfg.ControlEnabled {
-		handler = httpapi.RecordRequests(w.recorder)(handler)
-	}
-	if coLocated {
-		handler = controlScope(cfg.ControlToken)(handler)
-	}
-
-	server := newHTTPServer(cfg, cfg.Addr, handler)
+	server := newHTTPServer(cfg, cfg.Addr, assembleAPIHandler(cfg, coLocated, router, w))
 
 	var metricsServer *http.Server
 	if !serveMetricsInline {
@@ -223,9 +222,40 @@ func New(
 		controlServer: controlServer,
 		logger:        logger,
 		grace:         cfg.ShutdownGrace,
+		tlsCertFile:   tlsCertFile,
+		tlsKeyFile:    tlsKeyFile,
 		rateLimiter:   rateLimiter,
 		traceShutdown: traceShutdown,
 	}, nil
+}
+
+// assembleAPIHandler wraps the API router with the mux-level middleware the
+// control plane needs. Request recording wraps the whole handler; it path-guards
+// to the protocol families, so /_mock and the infra routes are never recorded —
+// the control plane can never observe itself. It is installed ONLY when the
+// control plane is enabled: recording exists solely to serve the control plane's
+// takeRequest/requests inspection, so with control off it would buffer bodies
+// into a log nothing can read or drain. When co-located, the control gate +
+// testing-only header wrap outermost, scoped to /_mock.
+func assembleAPIHandler(cfg config.Config, coLocated bool, router http.Handler, w wiring) http.Handler {
+	handler := router
+	if cfg.ControlEnabled {
+		handler = httpapi.RecordRequests(w.recorder)(handler)
+	}
+	if coLocated {
+		handler = controlScope(cfg.ControlToken)(handler)
+	}
+	return handler
+}
+
+// staticFileHandler builds the traversal-guarded /static file handler from the
+// seed, or nil when no static-assets path is configured — the zero-config default
+// inlines its login/error CSS and mounts no /static tree.
+func staticFileHandler(s config.Seed) http.Handler {
+	if s.StaticAssetsPath == "" {
+		return nil
+	}
+	return httpapi.NewStaticHandler(s.StaticAssetsPath)
 }
 
 // newHTTPServer builds an [http.Server] for addr with handler, applying the shared

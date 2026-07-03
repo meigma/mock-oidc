@@ -73,6 +73,13 @@ type RouterDeps struct {
 	// health checks and metrics scrapes do not generate spans. False adds no
 	// tracing overhead.
 	Tracing bool
+	// StaticHandler, when non-nil, is mounted as a raw chi wildcard at /static/*
+	// to serve a multi-segment static asset tree (out of the OpenAPI document, like
+	// the infra routes). A single-segment Huma path param cannot match nested asset
+	// paths, so the composition root builds the guarded file handler and passes it
+	// here. Nil leaves /static unmounted (the default zero-config deployment inlines
+	// its login/error CSS and needs no static tree).
+	StaticHandler http.Handler
 	// InstallRateLimit installs the rate-limit Huma middleware on the API. It MUST
 	// run before the resource operations are registered: Huma snapshots the
 	// middleware stack per operation at registration, so middleware added
@@ -147,6 +154,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	// Infrastructure routes stay raw chi and are excluded from the spec.
 	mountInfra(mux, deps.Metrics, deps.Readiness, deps.ServeMetricsEndpoint)
+
+	// The static asset tree is a raw chi wildcard (multi-segment, out of the spec),
+	// mounted only when a static-assets path is configured. chi matches the literal
+	// /static segment ahead of the dynamic /{issuer} param, so it is never shadowed.
+	if deps.StaticHandler != nil {
+		mux.Handle("/static/*", deps.StaticHandler)
+	}
 
 	if deps.Tracing {
 		// Wrap the whole handler in the OpenTelemetry HTTP server span, extracting

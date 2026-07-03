@@ -36,6 +36,12 @@ func runServe(cmd *cobra.Command, options Options) error {
 		return fmt.Errorf("load OIDC seed: %w", err)
 	}
 
+	// A JSON ssl:{} block turns HTTPS on. This is ORed AFTER Validate so a
+	// JSON-enabled, no-cert TLS run passes the "cert and key together" check and
+	// then self-signs in app.New; an explicit --tls-cert-file path is already on
+	// Config and honored the same way.
+	cfg.TLSEnabled = cfg.TLSEnabled || seed.TLSFromHTTPServer
+
 	application, err := app.New(cmd.Context(), cfg, logger, options.Build.Version, app.WithSeed(seed))
 	if err != nil {
 		return fmt.Errorf("build application: %w", err)

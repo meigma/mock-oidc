@@ -58,6 +58,19 @@ type Seed struct {
 	// redeeming, matching upstream's default.
 	RotateRefreshToken bool
 
+	// StaticAssetsPath is a filesystem directory served under /static/* (upstream's
+	// staticAssetsPath). Empty → the /static tree is not mounted; the built-in
+	// login/error pages inline their CSS, so the default deployment needs no static
+	// tree. The composition root builds the traversal-guarded file handler from it.
+	StaticAssetsPath string
+
+	// TLSFromHTTPServer is true when the JSON config carried an `ssl` object under
+	// httpServer (even empty). runServe ORs it into Config.TLSEnabled so an
+	// ssl:{} block turns HTTPS on with an in-process self-signed localhost
+	// certificate (upstream parity). Cert/key files are never carried here; they
+	// come from --tls-cert-file/--tls-key-file on Config.
+	TLSFromHTTPServer bool
+
 	// IssuerRecords carries the issuers pre-configured with token callbacks
 	// (upstream's tokenCallbacks). Each record groups one issuer's callbacks in
 	// declared (first-match) order; the composition root seeds them into the issuer
@@ -79,12 +92,51 @@ type document struct {
 	TokenProvider      tokenProviderDoc `json:"tokenProvider"`
 	InteractiveLogin   bool             `json:"interactiveLogin"`
 	RotateRefreshToken bool             `json:"rotateRefreshToken"`
+	// StaticAssetsPath is a directory served under /static/* (upstream parity).
+	StaticAssetsPath string `json:"staticAssetsPath"`
 	// TokenCallbacks is the declarative per-request callback list (upstream's
 	// tokenCallbacks). Each entry is the SAME JSON shape the control plane's
 	// enqueue-scenario DTO accepts, so a callback described as JSON parses
 	// identically whether it arrives at startup (here) or at runtime (/_mock).
 	TokenCallbacks []callbackDoc `json:"tokenCallbacks"`
+	// HTTPServer mirrors upstream's httpServer field (a bare string or an object
+	// carrying an optional `ssl` block). Its presence with an ssl object turns
+	// HTTPS on; the concrete server type is otherwise ignored.
+	HTTPServer httpServerDoc `json:"httpServer"`
 }
+
+// httpServerDoc accepts either upstream's bare-string httpServer form (for
+// example "MockWebServerWrapper") or an object with an optional `ssl` block.
+// tlsRequested reports whether an ssl object was present (even {}), which
+// runServe maps onto Config.TLSEnabled.
+type httpServerDoc struct {
+	sslPresent bool
+}
+
+// UnmarshalJSON parses the string-or-object httpServer shape without holding a
+// map[string]any: a bare string form carries no ssl; an object form is probed
+// only for a non-null `ssl` member.
+func (h *httpServerDoc) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || string(trimmed) == "null" || trimmed[0] == '"' {
+		return nil // absent, null, or the bare-string form: no ssl
+	}
+	var obj struct {
+		SSL json.RawMessage `json:"ssl"`
+	}
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return fmt.Errorf("httpServer: %w", err)
+	}
+	if len(obj.SSL) > 0 && string(bytes.TrimSpace(obj.SSL)) != "null" {
+		h.sslPresent = true
+	}
+	return nil
+}
+
+// tlsRequested reports whether the config asked for HTTPS via an ssl object. It
+// takes a pointer receiver to match UnmarshalJSON (a mixed receiver set is a lint
+// smell), even though it only reads.
+func (h *httpServerDoc) tlsRequested() bool { return h.sslPresent }
 
 // callbackDoc is one declarative token callback. With requestMappings it yields a
 // RequestMappingCallback; otherwise a DefaultTokenCallback carrying the
@@ -195,6 +247,8 @@ func (d document) toSeed() (Seed, error) {
 
 	seed.InteractiveLogin = d.InteractiveLogin
 	seed.RotateRefreshToken = d.RotateRefreshToken
+	seed.StaticAssetsPath = strings.TrimSpace(d.StaticAssetsPath)
+	seed.TLSFromHTTPServer = d.HTTPServer.tlsRequested() // ssl:{} → TLS on (ORed by runServe)
 
 	records, err := toIssuerRecords(d.TokenCallbacks)
 	if err != nil {
