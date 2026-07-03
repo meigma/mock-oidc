@@ -33,6 +33,14 @@ func NewStaticHandler(dir string) http.Handler {
 	if err != nil {
 		root = dir
 	}
+	// Canonicalize the root once so the per-request symlink re-check compares
+	// like against like (on macOS, for example, /var is itself a symlink to
+	// /private/var, so an un-evaluated root would never prefix an evaluated
+	// full path). A failure here leaves root lexical; a non-existent root
+	// serves nothing anyway (os.Stat below 404s before the re-check runs).
+	if resolved, evalErr := filepath.EvalSymlinks(root); evalErr == nil {
+		root = resolved
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(r.URL.Path, staticURLPrefix)
 
@@ -48,11 +56,32 @@ func NewStaticHandler(dir string) http.Handler {
 			return
 		}
 
+		// The lexical guard above cannot see through a symlink planted INSIDE
+		// the root that points out of it (both os.Stat and http.ServeFile
+		// follow links). Resolve the real path and re-verify containment so the
+		// doc guarantee — no read of an out-of-tree file — actually holds.
+		if !pathContained(root, full) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
 		if ct := mime.TypeByExtension(filepath.Ext(full)); ct != "" {
 			w.Header().Set("Content-Type", ct)
 		}
 		http.ServeFile(w, r, full)
 	})
+}
+
+// pathContained reports whether full, once its symlinks are resolved, is root
+// itself or a descendant of it. It is the non-lexical companion to
+// resolveStaticPath: an EvalSymlinks error (broken/looping link) or a resolution
+// that climbs out of root both read as "not contained".
+func pathContained(root, full string) bool {
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return false
+	}
+	return resolved == root || strings.HasPrefix(resolved, root+string(os.PathSeparator))
 }
 
 // resolveStaticPath maps a request-relative asset path to an absolute filesystem

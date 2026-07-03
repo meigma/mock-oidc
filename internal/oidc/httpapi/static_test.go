@@ -29,6 +29,11 @@ func TestStaticHandlerServesAndGuards(t *testing.T) {
 	require.NoError(t, os.WriteFile(secret, []byte("top secret"), 0o600))
 	t.Cleanup(func() { _ = os.Remove(secret) })
 
+	// A symlink planted INSIDE the root that points at the out-of-tree secret:
+	// the lexical guard cannot see through it, so the handler must resolve the
+	// link and refuse it as a flat 404 (the doc-comment guarantee).
+	require.NoError(t, os.Symlink(secret, filepath.Join(root, "leak.txt")))
+
 	h := httpapi.NewStaticHandler(root)
 
 	tests := []struct {
@@ -42,6 +47,7 @@ func TestStaticHandlerServesAndGuards(t *testing.T) {
 		{"dotdot climb refused", "/static/../secret.txt", http.StatusNotFound, "", "not found"},
 		{"deep climb refused", "/static/../../etc/passwd", http.StatusNotFound, "", "not found"},
 		{"absolute escape refused", "/static//etc/passwd", http.StatusNotFound, "", "not found"},
+		{"inside symlink escape refused", "/static/leak.txt", http.StatusNotFound, "", "not found"},
 		{"missing file 404", "/static/nope.js", http.StatusNotFound, "", "not found"},
 		{"directory 404", "/static/css", http.StatusNotFound, "", "not found"},
 	}
