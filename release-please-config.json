@@ -11,6 +11,7 @@
     ".": {
       "package-name": "mock-oidc",
       "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0",
       "extra-files": ["melange.yaml", "apko.yaml"]
     }
   },
