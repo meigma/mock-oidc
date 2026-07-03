@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/meigma/mock-oidc/compare/v0.1.0...v0.1.1) (2026-07-03)
+
+
+### Features
+
+* **oidc:** add login templates for interactive and headless login ([#25](https://github.com/meigma/mock-oidc/issues/25)) ([7c976bd](https://github.com/meigma/mock-oidc/commit/7c976bd80b33a29e6f08cf1c54d4fcf6cc4c6ba4))
+
 ## 0.1.0 (2026-07-03)
 
 
