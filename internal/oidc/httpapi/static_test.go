@@ -23,6 +23,7 @@ func TestStaticHandlerServesAndGuards(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "css"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "css", "app.css"), []byte("body{color:red}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("<!doctype html>console"), 0o644))
 
 	// A secret one directory above the static root; a working traversal would read it.
 	secret := filepath.Join(filepath.Dir(root), "secret.txt")
@@ -44,6 +45,7 @@ func TestStaticHandlerServesAndGuards(t *testing.T) {
 		wantBody   string
 	}{
 		{"nested asset served with mime", "/static/css/app.css", http.StatusOK, "text/css", "body{color:red}"},
+		{"index.html served, not redirected", "/static/index.html", http.StatusOK, "text/html", "console"},
 		{"dotdot climb refused", "/static/../secret.txt", http.StatusNotFound, "", "not found"},
 		{"deep climb refused", "/static/../../etc/passwd", http.StatusNotFound, "", "not found"},
 		{"absolute escape refused", "/static//etc/passwd", http.StatusNotFound, "", "not found"},

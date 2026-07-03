@@ -57,8 +57,8 @@ func NewStaticHandler(dir string) http.Handler {
 		}
 
 		// The lexical guard above cannot see through a symlink planted INSIDE
-		// the root that points out of it (both os.Stat and http.ServeFile
-		// follow links). Resolve the real path and re-verify containment so the
+		// the root that points out of it (both os.Stat and os.Open follow
+		// links). Resolve the real path and re-verify containment so the
 		// doc guarantee — no read of an out-of-tree file — actually holds.
 		if !pathContained(root, full) {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -68,7 +68,18 @@ func NewStaticHandler(dir string) http.Handler {
 		if ct := mime.TypeByExtension(filepath.Ext(full)); ct != "" {
 			w.Header().Set("Content-Type", ct)
 		}
-		http.ServeFile(w, r, full)
+		// ServeContent, not ServeFile: ServeFile 301-redirects any URL path
+		// ending in "/index.html" to "./", which lands on the directory path
+		// this handler deliberately 404s — making index.html the one
+		// unreachable file in the tree. ServeContent keeps the conditional/
+		// range handling without ServeFile's URL-path opinions.
+		file, err := os.Open(full)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		defer func() { _ = file.Close() }()
+		http.ServeContent(w, r, filepath.Base(full), info.ModTime(), file)
 	})
 }
 
