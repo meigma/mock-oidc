@@ -17,6 +17,7 @@ type AuthorizeService struct {
 	codes            CodeStore
 	clock            Clock
 	interactiveLogin bool
+	templates        LoginTemplates
 	newCode          func() string
 }
 
@@ -30,6 +31,15 @@ func WithAuthorizeCodeID(newCode func() string) AuthorizeOption {
 		if newCode != nil {
 			s.newCode = newCode
 		}
+	}
+}
+
+// WithLoginTemplates installs the config-declared login templates. A non-empty
+// collection arms the login_hint branch of Authorize; the default (empty)
+// leaves login_hint ignored.
+func WithLoginTemplates(templates LoginTemplates) AuthorizeOption {
+	return func(s *AuthorizeService) {
+		s.templates = templates
 	}
 }
 
@@ -60,14 +70,25 @@ func NewAuthorizeService(
 	return s
 }
 
-// Authorize decides between issuing a code and requiring interactive login: the
-// server interactiveLogin flag OR prompt ∈ {login,consent,select_account} forces
-// the login page; prompt=none never does. Only response_type=code is
-// dispatched — the hybrid/implicit members are advertised in discovery but
-// rejected here as invalid_grant.
+// Authorize decides between issuing a code and requiring interactive login.
+// When login templates are configured and the request carries a login_hint, the
+// hint wins outright: a matching template resolves headlessly to a code (even
+// over interactiveLogin and prompt=login), and an unknown name is a hard
+// invalid_request — never a silent fallthrough. Otherwise the server
+// interactiveLogin flag OR prompt ∈ {login,consent,select_account} forces the
+// login page; prompt=none never does. Only response_type=code is dispatched —
+// the hybrid/implicit members are advertised in discovery but rejected here as
+// invalid_grant.
 func (s *AuthorizeService) Authorize(ctx context.Context, req AuthorizeRequest) (AuthorizeResult, error) {
 	if req.ResponseType != ResponseTypeCode {
 		return AuthorizeResult{}, InvalidGrant("response_type " + string(req.ResponseType) + " not supported.")
+	}
+	if s.templates.Len() > 0 && req.LoginHint != "" {
+		tmpl, ok := s.templates.Lookup(LoginTemplateName(req.LoginHint))
+		if !ok {
+			return AuthorizeResult{}, UnknownLoginTemplate(req.LoginHint)
+		}
+		return s.issueCode(ctx, req, tmpl.Submission()) // template wins: headless login
 	}
 	if s.interactiveLogin || req.Prompt.RequiresLogin() {
 		return AuthorizeResult{Kind: AuthorizeShowLogin, Request: req}, nil

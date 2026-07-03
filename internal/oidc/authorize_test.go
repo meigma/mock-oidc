@@ -79,6 +79,113 @@ func TestAuthorizeTriggerMatrix(t *testing.T) {
 	}
 }
 
+// authorizeTestTemplates builds the two-template collection the login_hint
+// cases share: admin-alice carries claims, basic-bob has none.
+func authorizeTestTemplates(t *testing.T) oidc.LoginTemplates {
+	t.Helper()
+
+	var claims oidc.CustomClaims
+	claims.Set("email", "alice@example.com")
+	admin, err := oidc.NewLoginTemplate("admin-alice", "alice", claims)
+	require.NoError(t, err)
+	basic, err := oidc.NewLoginTemplate("basic-bob", "bob", oidc.CustomClaims{})
+	require.NoError(t, err)
+
+	templates, err := oidc.NewLoginTemplates(admin, basic)
+	require.NoError(t, err)
+	return templates
+}
+
+// TestAuthorizeLoginHintMatrix covers the login_hint decision layered over the
+// login-vs-code matrix: a known template wins over interactiveLogin AND
+// prompt=login (headless code), an unknown name is a hard invalid_request while
+// templates are configured, and the hint is ignored entirely when no templates
+// exist or when it is empty.
+func TestAuthorizeLoginHintMatrix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		templates        bool
+		hint             string
+		interactiveLogin bool
+		prompt           oidc.Prompt
+		wantKind         oidc.AuthorizeResultKind
+		wantErr          bool
+	}{
+		{"known hint issues code non-interactive", true, "admin-alice", false, "", oidc.AuthorizeRedirect, false},
+		{"known hint beats interactiveLogin", true, "admin-alice", true, "", oidc.AuthorizeRedirect, false},
+		{"known hint beats prompt=login", true, "admin-alice", true, oidc.PromptLogin, oidc.AuthorizeRedirect, false},
+		{"unknown hint is invalid_request", true, "nobody", false, "", 0, true},
+		{"hint ignored without templates (interactive)", false, "admin-alice", true, "", oidc.AuthorizeShowLogin, false},
+		{"hint ignored without templates (direct code)", false, "admin-alice", false, "", oidc.AuthorizeRedirect, false},
+		{"empty hint with templates shows login", true, "", true, "", oidc.AuthorizeShowLogin, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			codes := mocks.NewCodeStore(t)
+			if !tc.wantErr && tc.wantKind != oidc.AuthorizeShowLogin {
+				codes.EXPECT().Save(mock.Anything, oidc.AuthorizationCode("code-h"), mock.Anything).Return(nil)
+			}
+			clock := oidc.NewFixedClock(oidc.NewInstant(time.Unix(1_700_000_000, 0)))
+			opts := []oidc.AuthorizeOption{oidc.WithAuthorizeCodeID(func() string { return "code-h" })}
+			if tc.templates {
+				opts = append(opts, oidc.WithLoginTemplates(authorizeTestTemplates(t)))
+			}
+			svc := oidc.NewAuthorizeService(codes, clock, tc.interactiveLogin, opts...)
+
+			req := baseAuthorizeRequest()
+			req.Prompt = tc.prompt
+			req.LoginHint = tc.hint
+			res, err := svc.Authorize(context.Background(), req)
+
+			if tc.wantErr {
+				var perr *oidc.ProtocolError
+				require.ErrorAs(t, err, &perr)
+				assert.Equal(t, oidc.CodeInvalidRequest, perr.Code)
+				assert.Contains(t, perr.Description, "nobody")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantKind, res.Kind)
+		})
+	}
+}
+
+// TestAuthorizeLoginHintCachesTemplateSubmission confirms a resolved template
+// lands in the cached CodeRecord as an ordinary login snapshot (subject +
+// claims), so mint-time putIfAbsent merging applies to template claims exactly
+// as it does to interactively-typed ones.
+func TestAuthorizeLoginHintCachesTemplateSubmission(t *testing.T) {
+	t.Parallel()
+
+	var saved oidc.CodeRecord
+	codes := mocks.NewCodeStore(t)
+	codes.EXPECT().
+		Save(mock.Anything, oidc.AuthorizationCode("code-t"), mock.Anything).
+		Run(func(_ context.Context, _ oidc.AuthorizationCode, rec oidc.CodeRecord) { saved = rec }).
+		Return(nil)
+	clock := oidc.NewFixedClock(oidc.NewInstant(time.Unix(1_700_000_000, 0)))
+	svc := oidc.NewAuthorizeService(codes, clock, true,
+		oidc.WithAuthorizeCodeID(func() string { return "code-t" }),
+		oidc.WithLoginTemplates(authorizeTestTemplates(t)))
+
+	req := baseAuthorizeRequest()
+	req.LoginHint = "admin-alice"
+	res, err := svc.Authorize(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, oidc.AuthorizeRedirect, res.Kind)
+
+	require.NotNil(t, saved.Login)
+	assert.Equal(t, oidc.Subject("alice"), saved.Login.Username)
+	email, ok := saved.Login.Claims.Get("email")
+	assert.True(t, ok)
+	assert.Equal(t, "alice@example.com", email)
+}
+
 // TestAuthorizeRejectsNonCodeResponseType asserts only response_type=code is
 // dispatched; the advertised-but-unimplemented members are invalid_grant.
 func TestAuthorizeRejectsNonCodeResponseType(t *testing.T) {
