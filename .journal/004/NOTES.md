@@ -41,3 +41,22 @@ Open design questions posed to Josh: headless selection mechanism
 (`login_hint` vs mock-specific param vs both — load-bearing), GUI auto-submit
 vs pre-fill, template scope (global/per-issuer; just subject+claims or token
 overrides too), config-only vs runtime CRUD via `/_mock`.
+
+## 2026-07-03 12:10 — Design decisions locked (Josh) + code survey
+Decisions: (1) headless selection via standard `login_hint` param; (2) GUI
+dropdown PRE-FILLS username/claims, human can edit before submit; (3) template
+shape is just `{name, subject, claims}`, global scope, no token overrides;
+(4) config-only — must work via Docker-mounted config, no runtime CRUD.
+
+Survey findings: JSON config precedence JSON_CONFIG > JSON_CONFIG_PATH >
+./config.json (internal/config/jsonconfig.go) — Docker mount flow already
+exists; templates = new top-level key in the same document (unknown keys are
+lenient, upstream configs unaffected). `login_hint` is read nowhere today —
+zero conflict. AuthorizeService.Authorize() decides ShowLogin vs auto-issue;
+SubmitLogin(req, LoginSubmission) is the single funnel — a template resolves
+to a LoginSubmission for both paths. Login page is httpapi/html/login.html
+(inline CSS, no static tree needed).
+
+Remaining micro-decisions to settle with Josh: unknown-template login_hint
+behavior (error vs fall-through), login_hint vs prompt=login precedence,
+whether the hint value is the bare template name or prefixed.
