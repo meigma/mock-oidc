@@ -293,3 +293,22 @@ Open threads:
   distribution: CORS allowlist tightening, TLS, proxy-aware URL hardening,
   packaging/provenance melange/apko/cosign/SLSA, docs) — the FINAL slice. Also
   pending: 2 open dependabot PRs (otelhttp 0.69.0, x/time 0.15.0) to babysit.
+
+## 2026-07-02 16:20 — PR #13 merged; Slice 6 (FINAL) starting
+- PR #13 squash-merged → master@bc6de51 (CI green). Cleanup done; 49 Slice 5
+  boxes ticked + DONE line.
+- Pre-launch assessment of Slice 6 scope (much already landed in earlier slices):
+  * §F release-chain identifiers: CLEAN — `git grep template-go-api` empty
+    outside skills/scaffold/CHANGELOG (Slice 0 pulled the rename forward).
+  * §B CORS default-ON reflect-origin + credentials: present in cors.go (Slice 1).
+  * §A ResolveBaseURL: exists in internal/oidc/issuer.go (Slice 1).
+  So genuinely-new Slice 6 work = TLS termination + self-signed gen (§C),
+  static-asset traversal guard + metric cardinality (§D), complete proxy-URL
+  threading through ALL url-emitting handlers + forwarded precedence (§A finish),
+  README/docs rewrite (§G), R3 host.docker.internal + TLS https variants (§H).
+  Agents told to ASSESS-then-finish, not redo done work.
+- Slice 6 worktree feat/slice-6-ops-distribution off master@bc6de51; 4-stage
+  workflow (edge hardening A/B/D → TLS+CLI C/E → distribution+docs F/G →
+  R3+gates H). Security reviewer covers TLS self-signed correctness (adapter-tier,
+  not core), X-Forwarded trust model, static-asset traversal, CORS credential
+  safety.
