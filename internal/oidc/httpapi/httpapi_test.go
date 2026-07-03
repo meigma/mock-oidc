@@ -42,9 +42,15 @@ func newTestServer(t *testing.T) *httptest.Server {
 // FallbackWriter strategy so wrong-method protocol routes render the OAuth2 shape.
 // The CodeStore is shared between the AuthorizeService and the TokenService so a
 // code minted at /authorize is redeemable at /token. interactive forces the login
-// page on GET /authorize.
-func newAuthServer(t *testing.T, interactive bool) *httptest.Server {
+// page on GET /authorize. An optional trailing LoginTemplates wires the login
+// templates into both the AuthorizeService and the login-page render.
+func newAuthServer(t *testing.T, interactive bool, templates ...oidc.LoginTemplates) *httptest.Server {
 	t.Helper()
+
+	var loginTemplates oidc.LoginTemplates
+	if len(templates) > 0 {
+		loginTemplates = templates[0]
+	}
 
 	signer, err := signing.NewProvider(oidc.RS256, nil)
 	require.NoError(t, err)
@@ -56,9 +62,13 @@ func newAuthServer(t *testing.T, interactive bool) *httptest.Server {
 	provider := oidc.NewProviderService(registry, signer)
 	tokens := oidc.NewTokenService(registry, signer, signer, clock,
 		oidc.WithCodeStore(codes), oidc.WithRefreshStore(refresh))
-	authorize := oidc.NewAuthorizeService(codes, clock, interactive)
+	authorize := oidc.NewAuthorizeService(codes, clock, interactive,
+		oidc.WithLoginTemplates(loginTemplates))
 	session := oidc.NewSessionService(signer, refresh, clock)
-	deps := httpapi.Deps{Provider: provider, Tokens: tokens, Authorize: authorize, Session: session}
+	deps := httpapi.Deps{
+		Provider: provider, Tokens: tokens, Authorize: authorize, Session: session,
+		LoginTemplates: loginTemplates,
+	}
 
 	discard := observability.NewLogger(io.Discard, slog.LevelError, "json")
 	handler := adapterhttp.NewRouter(adapterhttp.RouterDeps{

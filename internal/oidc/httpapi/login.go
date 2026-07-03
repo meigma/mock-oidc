@@ -29,6 +29,7 @@ type LoginInput struct {
 	Prompt              string `query:"prompt"`
 	CodeChallenge       string `query:"code_challenge"`
 	CodeChallengeMethod string `query:"code_challenge_method"`
+	LoginHint           string `query:"login_hint"`
 	RawBody             []byte `contentType:"application/x-www-form-urlencoded"`
 }
 
@@ -47,6 +48,7 @@ func (i *LoginInput) params() authorizeParams {
 		Prompt:              i.Prompt,
 		CodeChallenge:       i.CodeChallenge,
 		CodeChallengeMethod: i.CodeChallengeMethod,
+		LoginHint:           i.LoginHint,
 	}
 }
 
@@ -137,6 +139,40 @@ func parseLoginClaims(raw string) (oidc.CustomClaims, bool) {
 		claims.Set(key, oidc.ClaimValue(val))
 	}
 	return claims, true
+}
+
+// claimsToJSON serializes an ordered claim set into a compact JSON object for
+// the login-page template pre-fill — the inverse of parseLoginClaims. The object
+// is built member-by-member so insertion order survives (marshaling a map would
+// randomize it); json.Marshal escapes <, >, and & by default, so the result is
+// safe for the attribute context it renders into. Empty claims yield "" (a blank
+// textarea), and a marshal failure — unreachable for config-parsed, JSON-native
+// values — degrades to "" rather than a partial object.
+func claimsToJSON(claims oidc.CustomClaims) string {
+	entries := claims.Entries()
+	if len(entries) == 0 {
+		return ""
+	}
+	var buf strings.Builder
+	buf.WriteByte('{')
+	for i, e := range entries {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		name, err := json.Marshal(e.Name)
+		if err != nil {
+			return ""
+		}
+		value, err := json.Marshal(e.Value)
+		if err != nil {
+			return ""
+		}
+		buf.Write(name)
+		buf.WriteByte(':')
+		buf.Write(value)
+	}
+	buf.WriteByte('}')
+	return buf.String()
 }
 
 // loginFormSchema documents the url-encoded login-submission fields for the
