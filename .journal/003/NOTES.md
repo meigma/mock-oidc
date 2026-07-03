@@ -141,3 +141,26 @@ Gotcha recorded: release-please ignores the manifest version at bootstrap
 Note: create-github-app-token warns `app-id` input is deprecated (use
 client-id); the 1Password item carries client_id if we want to migrate the
 workflow later.
+
+## 2026-07-03 09:39 — Deps merged, ghd dropped, release PR green (v0.1.0 ready)
+- **All 6 dependabot PRs merged** (#1 actions/cache, #2 setup-go, #4 attest,
+  #5 otelhttp, #6 x/time, #3 goreleaser-action). Gotcha discovered: an OAuth
+  token without `workflow` scope CAN squash-merge a PR touching workflow files
+  iff the resulting blob already exists from an authorized push (SSH/dependabot)
+  — #3 only merged after a fresh `@dependabot rebase` made the merge result
+  equal dependabot's own pushed tree. `gh pr update-branch` on workflow-touching
+  PRs always fails without the scope; `@dependabot rebase` is the workaround.
+- **PR #22 (171ee1d)**: dropped the ghd distribution integration (user:
+  ghd.toml removal was intentional) — kept goreleaser artifact/checksum
+  validation + dist/release-assets staging (script renamed
+  stage_release_assets.py, 5 tests pass); removed ghd.toml checks + release-
+  notes `ghd download` snippet. Also fixed the `openapi | grep -Fq` broken-pipe
+  race in BOTH workflows (capture to file first). Verified pre-merge by
+  workflow_dispatch of release-dry-run on the branch: all 4 jobs green.
+- **Release PR gotcha**: pull_request dry-run jobs execute the workflow from
+  the PR's HEAD branch — the stale release-please branch kept running pre-fix
+  workflows (and its one 'passing' container job had merely won the pipe race).
+  Chore/ci merges don't refresh release-please PRs. Fix: close PR + delete the
+  release-please branch + re-dispatch release-please → recreated as **PR #23**
+  from current master. **#23 is CLEAN: all four dry-run jobs + ci green.**
+  Merging #23 tags v0.1.0 and creates the draft release — left to the user.
