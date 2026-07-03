@@ -39,10 +39,16 @@
   PATH (3.7.0 emits `interface{}`, 3.7.1 emits `any`). Always run gates through the pinned
   toolchain: `mise x -- moon run check` / `mise x -- mockery`. Consider `brew uninstall
   mockery` on this host. CI uses mise, so it always matches the pin.
-- Execution blueprint: `.journal/002/mock-oidc-implementation-plan.md` — the working,
-  slice-by-slice implementation plan (Slices 0–6 + cross-cutting testing) that turns the
-  technical design into an ordered, file-level, functionally-gated task list. Start here to
-  implement; it defers to the technical design on any conflict. Read before beginning a slice.
+- **IMPLEMENTATION COMPLETE (2026-07-02, session 002):** all 7 slices (0–6) are merged to
+  `master` (PRs #8–#14). The full specified design is shipped — parity feature set complete:
+  all 6 grants, id/refresh tokens, lifecycle (userinfo/introspect/revoke/endsession),
+  multi-issuer key isolation, the `/_mock` control plane + debugger, proxy-aware URLs, TLS.
+  Every slice cleared a container-level functional DoD. Package layout as designed:
+  `internal/oidc` (pure core) + `internal/oidc/{signing,memory,httpapi,controlapi}` adapters
+  + `internal/app` composition. Signing/verification are stdlib-only (no go-jose).
+- Execution blueprint (now the build record): `.journal/002/mock-oidc-implementation-plan.md`
+  — the slice-by-slice plan, all boxes ticked, per-slice DONE status lines with merge shas.
+  Read it to understand how a given behavior was built and which PR shipped it.
 - Technical design: `.journal/001/mock-oidc-technical-design.md` — normative build
   blueprint. Hexagonal Go reusing the template's Huma/chi base; core domain pkg
   `internal/oidc` (pure) + driven adapters `internal/oidc/{signing,memory}` + driving
