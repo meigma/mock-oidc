@@ -42,4 +42,4 @@ annotations:
   org.opencontainers.image.description: Standalone mock OIDC/OAuth2 authorization server for testing
   org.opencontainers.image.source: https://github.com/meigma/mock-oidc
   org.opencontainers.image.licenses: Apache-2.0 OR MIT
-  org.opencontainers.image.version: "0.0.0" # x-release-please-version
+  org.opencontainers.image.version: "0.1.0" # x-release-please-version
