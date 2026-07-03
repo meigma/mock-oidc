@@ -11,12 +11,12 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT_PATH = Path(__file__).with_name("stage_ghd_release_assets.py")
-SPEC = importlib.util.spec_from_file_location("stage_ghd_release_assets", SCRIPT_PATH)
+SCRIPT_PATH = Path(__file__).with_name("stage_release_assets.py")
+SPEC = importlib.util.spec_from_file_location("stage_release_assets", SCRIPT_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None
-stage_ghd_release_assets = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(stage_ghd_release_assets)
+stage_release_assets = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(stage_release_assets)
 
 
 PLATFORMS = (
@@ -37,20 +37,7 @@ def working_directory(path: Path):
         os.chdir(original)
 
 
-@contextlib.contextmanager
-def github_repository(value: str):
-    original = os.environ.get("GITHUB_REPOSITORY")
-    os.environ["GITHUB_REPOSITORY"] = value
-    try:
-        yield
-    finally:
-        if original is None:
-            os.environ.pop("GITHUB_REPOSITORY", None)
-        else:
-            os.environ["GITHUB_REPOSITORY"] = original
-
-
-class StageGhdReleaseAssetsTest(unittest.TestCase):
+class StageReleaseAssetsTest(unittest.TestCase):
     def test_stages_expected_assets(self) -> None:
         with fixture() as root:
             result, stdout, stderr = run_script(root)
@@ -92,13 +79,6 @@ class StageGhdReleaseAssetsTest(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn("checksum mismatch for mock-oidc_1.2.3_linux_amd64", stderr)
 
-    def test_fails_on_wrong_signer_workflow(self) -> None:
-        with fixture(signer="other/repo/.github/workflows/release.yml") as root:
-            result, _, stderr = run_script(root)
-
-            self.assertEqual(result, 1)
-            self.assertIn("signer_workflow", stderr)
-
     def test_fails_on_missing_os_arch_asset(self) -> None:
         with fixture(omit_artifact=("linux", "arm64", "Binary")) as root:
             result, _, stderr = run_script(root)
@@ -117,16 +97,15 @@ class StageGhdReleaseAssetsTest(unittest.TestCase):
 def run_script(root: Path) -> tuple[int, str, str]:
     stdout = io.StringIO()
     stderr = io.StringIO()
-    with working_directory(root), github_repository("meigma/mock-oidc"):
+    with working_directory(root):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            result = stage_ghd_release_assets.main(["--tag", "v1.2.3"])
+            result = stage_release_assets.main(["--tag", "v1.2.3"])
     return result, stdout.getvalue(), stderr.getvalue()
 
 
 @contextlib.contextmanager
 def fixture(
     *,
-    signer: str = "meigma/mock-oidc/.github/workflows/attest.yml",
     missing_checksum: str | None = None,
     checksum_override: tuple[str, str] | None = None,
     omit_artifact: tuple[str, str, str] | None = None,
@@ -135,7 +114,6 @@ def fixture(
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         (root / "dist").mkdir()
-        write_ghd_toml(root / "ghd.toml", signer)
 
         artifacts: list[dict[str, str]] = []
         checksum_entries: dict[str, str] = {}
@@ -187,45 +165,6 @@ def fixture(
         artifacts_path = root / "dist/artifacts.json"
         artifacts_path.write_text(format_artifacts_json(artifacts), encoding="utf-8")
         yield root
-
-
-def write_ghd_toml(path: Path, signer: str) -> None:
-    path.write_text(
-        f'''version = 1
-
-[provenance]
-signer_workflow = "{signer}"
-
-[[packages]]
-name = "mock-oidc"
-description = "Meigma Go repository template starter CLI."
-tag_pattern = "v${{version}}"
-
-[[packages.assets]]
-os = "darwin"
-arch = "amd64"
-pattern = "mock-oidc_${{version}}_darwin_amd64"
-
-[[packages.assets]]
-os = "darwin"
-arch = "arm64"
-pattern = "mock-oidc_${{version}}_darwin_arm64"
-
-[[packages.assets]]
-os = "linux"
-arch = "amd64"
-pattern = "mock-oidc_${{version}}_linux_amd64"
-
-[[packages.assets]]
-os = "linux"
-arch = "arm64"
-pattern = "mock-oidc_${{version}}_linux_arm64"
-
-[[packages.binaries]]
-path = "mock-oidc"
-''',
-        encoding="utf-8",
-    )
 
 
 def sha256(path: Path) -> str:
