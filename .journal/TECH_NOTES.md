@@ -49,6 +49,19 @@
 - Execution blueprint (now the build record): `.journal/002/mock-oidc-implementation-plan.md`
   — the slice-by-slice plan, all boxes ticked, per-slice DONE status lines with merge shas.
   Read it to understand how a given behavior was built and which PR shipped it.
+- **ACCEPTANCE COMPLETE (2026-07-03, session 003):** browser acceptance gate run
+  against the container image (chrome-devtools, port-remapped) — 91/92 checks PASS
+  (1 expected skip). Two blockers found+fixed: PR #15 (static index.html unreachable
+  via http.ServeFile redirect) and PR #16 (sub-less tokens on non-interactive
+  auth-code; now UUID fallback, upstream parity). The reusable test console lives in
+  `webtest/` (PR #17; see webtest/README.md — serve via staticAssetsPath, never
+  file://). Full report: `.journal/003/acceptance-report.md`. Pre-publish blocker
+  remaining: **no LICENSE file** (README §License).
+- Ops gotchas (2026-07-03): golangci-lint's cache goes stale when a worktree it
+  indexed is removed — `root:lint` fails with "no such file or directory" noise;
+  fix with `mise x -- golangci-lint cache clean`. `wt remove` deletes in the
+  background via `.git/wt/trash/` and races `mise run image-local` (melange
+  snapshots the repo incl. trash) — wait for `.git/wt/trash/` to empty first.
 - Technical design: `.journal/001/mock-oidc-technical-design.md` — normative build
   blueprint. Hexagonal Go reusing the template's Huma/chi base; core domain pkg
   `internal/oidc` (pure) + driven adapters `internal/oidc/{signing,memory}` + driving

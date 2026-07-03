@@ -93,3 +93,10 @@ Remaining pre-publish flags: LICENSE missing (README says add before
 publishing), .agents template-go-api remnants (cosmetic), version/CHANGELOG
 reset before first real release.
 Next: open + merge the webtest console PR, close the session.
+
+## 2026-07-02 23:35 — Console PR merged; work complete
+PR #17 (d0850b6) squash-merged after rebase onto the two fixes; gate green
+(lint-cache clean needed again — recorded in TECH_NOTES with the wt-remove/
+image-local race). Session deliverables all landed: webtest/ console (#17),
+static-index fix (#15), default-subject fix (#16), acceptance report +
+evidence in .journal/003/. Awaiting session-close from the user.
