@@ -10,6 +10,8 @@ package:
   version: "1.0.4" # x-release-please-version
   epoch: 0
   description: Standalone mock OIDC/OAuth2 authorization server for testing
+  copyright:
+    - license: Apache-2.0 OR MIT
 
 environment:
   contents:
