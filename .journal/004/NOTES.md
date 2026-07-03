@@ -60,3 +60,26 @@ to a LoginSubmission for both paths. Login page is httpapi/html/login.html
 Remaining micro-decisions to settle with Josh: unknown-template login_hint
 behavior (error vs fall-through), login_hint vs prompt=login precedence,
 whether the hint value is the bare template name or prefixed.
+
+## 2026-07-03 12:45 — Implemented end to end; PR #25 open
+Plan approved (plan file: 1-agreed-2-agreed-graceful-giraffe.md) and executed on
+worktree `feat/login-templates` (six signed commits, ba35c9a..9cb7268):
+domain LoginTemplate/LoginTemplates + WithLoginTemplates hint branch →
+httpapi login_hint + Deps + dropdown/pre-fill JS → config loginTemplates
+parsing + wiring + OpenAPI regen → integration/webtest coverage → docs
+(new how-to log-in-with-login-templates, config reference, Beyond parity,
+README) → lint fixes.
+
+Verification: `mise x -- moon run check` green (12 tasks; caught funcorder/
+godoclint/golines/testifylint/mapsloop first pass — fixed). Image built
+(`mise run image-local`), full integration suite green incl. new
+TestContainerLoginTemplates. Manual container DoD with Docker-MOUNTED
+config.json: headless login_hint flow minted id_token {sub: alice, email,
+roles:[admin]}; unknown hint → invalid_request with clear description;
+dropdown HTML escaped correctly. Browser check (chrome-devtools): pre-fill
+works, fields stay editable, "— none —" leaves edits untouched — screenshot
+at .journal/004/login-page-template-dropdown.png. Gotcha hit: an orphaned
+MCP automation Chrome held the chrome-devtools profile lock; pkill -f
+'chrome-devtools-mcp/chrome-profile' cleared it.
+
+PR: https://github.com/meigma/mock-oidc/pull/25 (awaiting review/merge).
