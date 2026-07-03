@@ -35,7 +35,32 @@ theme:
 
 nav:
   - Home: index.md
-  - API Reference: api.md
+  - Tutorial:
+      - Your first mock sign-in: tutorials/first-mock-sign-in.md
+  - How-to guides:
+      - Get tokens for every grant: how-to/get-tokens-for-every-grant.md
+      - Drive the authorization-code flow: how-to/drive-the-authorization-code-flow.md
+      - Shape token claims: how-to/shape-token-claims.md
+      - Simulate expiry and time: how-to/simulate-expiry-and-time.md
+      - Capture and assert requests: how-to/capture-and-assert-requests.md
+      - Use multiple issuers: how-to/use-multiple-issuers.md
+      - Serve over TLS: how-to/serve-over-tls.md
+      - Run behind a proxy or in Docker: how-to/run-behind-a-proxy-or-in-docker.md
+      - Lock down the control plane: how-to/lock-down-the-control-plane.md
+      - Migrate from mock-oauth2-server: how-to/migrate-from-mock-oauth2-server.md
+      - Verify released artifacts: how-to/verify-released-artifacts.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - CLI: reference/cli.md
+      - Tokens and claims: reference/tokens-and-claims.md
+      - Control plane (/_mock): reference/control-plane.md
+      - Observability: reference/observability.md
+      - API Reference: api.md
+  - Explanation:
+      - The security model: explanation/security-model.md
+      - Issuers and advertised identity: explanation/issuers-and-identity.md
+      - Parity with mock-oauth2-server: explanation/parity.md
+      - Architecture and distribution: explanation/architecture-and-distribution.md
 
 plugins:
   - search
