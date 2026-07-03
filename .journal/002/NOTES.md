@@ -312,3 +312,34 @@ Open threads:
   R3+gates H). Security reviewer covers TLS self-signed correctness (adapter-tier,
   not core), X-Forwarded trust model, static-asset traversal, CORS credential
   safety.
+
+## 2026-07-02 18:37 — Slice 6 (FINAL) implemented; PR #14 open
+- Workflow wf_e4a108af-3d2 completed (9 agents, ~1M subagent tokens, ~68min).
+  All 8 DoD items PASS on container: zero-config boot, proxy X-Forwarded-*
+  rewrites iss + every endpoint to host-root https, CORS 204 preflight, ssl:{}
+  all-https discovery, static traversal 404, moon check + grep gate, mock-oidc
+  image w/ correct entrypoint+OCI labels, R1/R2/R3 green (host.docker.internal +
+  TLS variants), -race clean.
+- Assessment confirmed: §F identifiers + §B CORS + §A ResolveBaseURL already
+  landed earlier — agents verified vs redid. Genuinely-new: TLS+self-signed
+  (internal/app/tls.go, adapter-tier, arch_test confirms no core leak), static
+  handler, README/docs reframe.
+- Review found 3 REAL minors, all fixed: static guard followed symlinks (now
+  EvalSymlinks + re-contain); X-Forwarded-Host embedded port -> double-colon iss
+  (now split); stale CORSAllowedOrigins doc comment.
+- Also fixed a real dead-alias bug found in stage E: SERVER_PORT/PORT were bound
+  but never composed into the listen addr (SERVER_PORT silently ignored) ->
+  added resolveListenAddr.
+- Deviation flagged: TLS JSON is the normative {"httpServer":{"ssl":{}}} not the
+  plan's {"ssl":{}} shorthand; IPv6 X-Forwarded-Host stays the documented parity
+  gap.
+- 14 signed commits; PR #14 (squash): https://github.com/meigma/mock-oidc/pull/14
+- MILESTONE: this is the 7th and FINAL slice. On merge, the full specified design
+  (Slices 0-6) is implemented end-to-end — parity feature set complete.
+- Remaining after #14 merges: tick Slice 6 boxes + mark plan complete; 2 open
+  dependabot PRs (otelhttp 0.69.0, x/time 0.15.0) to babysit; consider
+  session-close. Possible follow-ups surfaced during the slices: default subject
+  for zero-config tokens (empty sub); loginPagePath custom login page (TDD defers
+  as low-risk polish); .agents/ skill docs still carry template-go-api (skill-
+  synced, intentionally untouched); version/CHANGELOG reset before first real
+  release (inherited 1.0.4 template lineage).
