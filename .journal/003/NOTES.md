@@ -100,3 +100,26 @@ PR #17 (d0850b6) squash-merged after rebase onto the two fixes; gate green
 image-local race). Session deliverables all landed: webtest/ console (#17),
 static-index fix (#15), default-subject fix (#16), acceptance report +
 evidence in .journal/003/. Awaiting session-close from the user.
+
+## 2026-07-03 08:08 — Publish prep: dual license, v0.1 reset, repo config
+Three follow-ups from the user, all done:
+- **PR #18 (b0d17bc)**: dual license Apache-2.0 OR MIT — LICENSE-APACHE +
+  LICENSE-MIT (copyright Joshua Gilman), README dual-license section with
+  contribution clause, melange package.copyright SPDX, apko
+  org.opencontainers.image.licenses annotation (verified on the built image).
+- **PR #19 (2aacbd0)**: release lineage reset — manifest 0.0.0, CHANGELOG
+  cleared, melange/apko x-release-please-version stamps 0.0.0. Repo has no
+  tags/releases (single squashed initial commit), so release-please will scan
+  full real history; bump-minor-pre-major turns the feats into **v0.1.0**.
+- **Repo config script**: `uv run .github/scripts/configure_github_repo.py
+  apply --repo meigma/mock-oidc` — settings, immutable releases, private vuln
+  reporting, security fixes, Pages (workflow build; transient "certificate
+  does not exist yet" race on https_enforced self-resolved), branch + tag
+  rulesets. Plan now reports "No supported changes required". Nine settings
+  documented as not API-automatable (script lists them).
+- **BLOCKER (user action)**: the Release Please workflow fails on every
+  master push — `vars.MEIGMA_RELEASE_APP_ID` / `secrets.
+  MEIGMA_RELEASE_APP_PRIVATE_KEY` are not visible to this repo (org-scoped
+  to selected repositories, mock-oidc not granted; org admin needed). Until
+  granted, no v0.1.0 release PR can be created. Re-run release-please.yml
+  after granting.
