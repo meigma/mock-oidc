@@ -90,3 +90,19 @@ branch). Squash-merged as `7c976bd` "feat(oidc): add login templates for
 interactive and headless login (#25)"; remote branch deleted, local master
 pulled, worktree removed via `wt remove`. Feature is on master. Session goal
 (investigate + deliver a template system) is complete pending session close.
+
+## 2026-07-03 13:10 — v0.1.1 released and verified
+release-please PR #26 proposed 0.1.1 (NOT 0.2.0 — correct per config:
+`bump-patch-for-minor-pre-major: true` maps feat→patch pre-1.0). All dry-run
+gates green (melange amd64/arm64, binary + container dry-runs) → squash-merged
+as `877166c` → release.yml run 28680269710 fully green. Same two non-fatal
+attest-image annotations as v0.1.0 (artifact-metadata:write / storage record)
+— known open thread, attestations verify regardless.
+
+Verified: tag `v0.1.1` exists; GitHub release is a DRAFT (by design, human
+publish pending) with 9 assets (4 binaries + 4 SBOMs + checksums). Image
+ghcr.io/meigma/mock-oidc:v0.1.1
+(sha256:4e9a864903ed6cde4a9f41d945f09ff735de2b2a1d554a81355698c4ed02a096):
+`gh attestation verify` OK with wrong-repo negative control rejected.
+Published-image smoke test with mounted config: /isalive OK, headless
+login_hint flow OK, dropdown rendered OK, binary stamps 0.1.1/877166c.
