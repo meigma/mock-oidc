@@ -164,3 +164,31 @@ workflow later.
   release-please branch + re-dispatch release-please → recreated as **PR #23**
   from current master. **#23 is CLEAN: all four dry-run jobs + ci green.**
   Merging #23 tags v0.1.0 and creates the draft release — left to the user.
+
+## 2026-07-03 10:29 — Diátaxis docs site + README rework (PR #24, awaiting review)
+Restructured the docs per the diataxis skill. New MkDocs site under docs/docs/:
+1 tutorial (curl-only first sign-in), 11 how-tos (incl. migrate-from-
+mock-oauth2-server + verify-released-artifacts), 5 reference pages
+(configuration/cli/tokens-and-claims/control-plane/observability) + the existing
+generated api.md, 4 explanation pages (security-model/issuers-and-identity/
+parity/architecture-and-distribution). README 438→120 lines (entry point:
+description/features/quickstart/docs-map/development); dev detail (project
+layout, tests, common tasks) absorbed into CONTRIBUTING.md + fixed its stale
+"Go web API server template" framing.
+Build: authored via workflow wf_3539c08f-b7c (47 opus agents: 24 writers, 22
+per-page adversarial type-purity/fact reviewers, 1 strict-build integrator).
+Model policy honored (opus throughout; no Fable inheritance). Integrator fixed
+a few cross-page inconsistencies; I then added the missing --server-hostname/
+--server-port flag rows to the Configuration reference (real pflags the "every
+flag" claim had omitted — verified against internal/config/config.go) and a
+#listen-address anchor. mkdocs build --strict green.
+VERIFIED LIVE (not just built): ran the tutorial's full command chain + the
+jwt-bearer dummy-signature how-to against a real server — auth-code returns all
+3 tokens, id_token sub is a UUID (the S003 fix), azp/tid scoping correct,
+aud=[client_id], single-use code → invalid_grant, /_mock/mint round-trips,
+jwt-bearer parsed-not-verified copies sub. All match the docs.
+**PR #24 open, all checks green incl. the Pages docs build. NOT merged —
+paused for human review per instruction.** Docs branch worktree still present
+(.wt/docs-diataxis-site) until the PR lands.
+Open release chain still pending the user: merge #23 (v0.1.0 draft). #24 is
+independent of #23.
