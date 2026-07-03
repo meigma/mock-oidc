@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // defaultTokenExpiry is the built-in token lifetime (upstream default 3600s).
@@ -75,6 +77,7 @@ type TokenCallback interface {
 type DefaultTokenCallback struct {
 	issuer   IssuerID
 	subject  Subject      // "" == unset (fall through to the grant's subject rule)
+	fallback Subject      // terminal subject when nothing else resolves (upstream: UUID per callback)
 	audience Audience     // nil == unset (fall through the 4-step chain)
 	typ      JOSEType     // "" == unset (defaults to "JWT")
 	claims   CustomClaims // extra scripted claims folded add-only by the service
@@ -84,7 +87,12 @@ type DefaultTokenCallback struct {
 // NewDefaultTokenCallback builds the default callback for issuer, with the
 // unset audience and the built-in 3600s expiry.
 func NewDefaultTokenCallback(issuer IssuerID) DefaultTokenCallback {
-	return DefaultTokenCallback{issuer: issuer, audience: nil, expiry: defaultTokenExpiry}
+	return DefaultTokenCallback{
+		issuer:   issuer,
+		fallback: Subject(uuid.NewString()),
+		audience: nil,
+		expiry:   defaultTokenExpiry,
+	}
 }
 
 // NewDefaultTokenCallbackWith builds a default callback carrying an explicit
@@ -109,6 +117,7 @@ func NewDefaultTokenCallbackWith(
 	return DefaultTokenCallback{
 		issuer:   issuer,
 		subject:  subject,
+		fallback: Subject(uuid.NewString()),
 		audience: audience,
 		typ:      typ,
 		claims:   claims.Clone(),
@@ -121,7 +130,9 @@ func (c DefaultTokenCallback) IssuerID() IssuerID { return c.issuer }
 
 // Subject resolves the token subject: an explicitly configured subject wins;
 // else client_credentials uses the client_id; otherwise the pre-resolved input
-// subject (ROPC/login username).
+// subject (ROPC/login username); else the callback's UUID fallback, so the
+// default callback never mints a sub-less token (OIDC Core requires id_token
+// sub; upstream's DefaultOAuth2TokenCallback defaults subject to a UUID).
 func (c DefaultTokenCallback) Subject(in CallbackInput) Subject {
 	if c.subject != "" {
 		return c.subject
@@ -129,7 +140,10 @@ func (c DefaultTokenCallback) Subject(in CallbackInput) Subject {
 	if in.Grant == GrantClientCredentials {
 		return in.Client.ID.AsSubject()
 	}
-	return in.Subject
+	if in.Subject != "" {
+		return in.Subject
+	}
+	return c.fallback
 }
 
 // Audience applies the 4-step access_token audience precedence: (1) an
