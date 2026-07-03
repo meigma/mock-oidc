@@ -123,6 +123,32 @@ func TestLoadSeedRotateRefreshTokenDefaultsFalse(t *testing.T) {
 	assert.False(t, seed.RotateRefreshToken, "absent rotateRefreshToken defaults to false")
 }
 
+// TestLoadSeedStaticAssetsPath verifies the top-level staticAssetsPath parses
+// into the seed (trimmed) so the composition root can mount the /static tree.
+func TestLoadSeedStaticAssetsPath(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"staticAssetsPath": "  /srv/assets  "}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/assets", seed.StaticAssetsPath, "staticAssetsPath honored and trimmed")
+}
+
+// TestLoadSeedStaticAssetsPathDefaultsEmpty verifies an absent staticAssetsPath
+// leaves the /static tree unmounted (zero-config default).
+func TestLoadSeedStaticAssetsPathDefaultsEmpty(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Empty(t, seed.StaticAssetsPath, "absent staticAssetsPath stays empty")
+}
+
 // TestDefaultSeedRotateRefreshTokenFalse verifies the zero-config seed leaves
 // refresh-token rotation off.
 func TestDefaultSeedRotateRefreshTokenFalse(t *testing.T) {

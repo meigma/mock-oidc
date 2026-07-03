@@ -171,6 +171,7 @@ func New(
 		RequestTimeout:       cfg.RequestTimeout,
 		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
 		TrustedProxyHeader:   cfg.TrustedProxyHeader,
+		StaticHandler:        staticFileHandler(o.seed),
 		// No DB ⇒ no readiness checks ⇒ /readyz is unconditionally ready.
 		Readiness: nil,
 		// Mount the OIDC protocol operations (discovery, JWKS, token) built above.
@@ -226,6 +227,16 @@ func New(
 		rateLimiter:   rateLimiter,
 		traceShutdown: traceShutdown,
 	}, nil
+}
+
+// staticFileHandler builds the traversal-guarded /static file handler from the
+// seed, or nil when no static-assets path is configured — the zero-config default
+// inlines its login/error CSS and mounts no /static tree.
+func staticFileHandler(s config.Seed) http.Handler {
+	if s.StaticAssetsPath == "" {
+		return nil
+	}
+	return httpapi.NewStaticHandler(s.StaticAssetsPath)
 }
 
 // newHTTPServer builds an [http.Server] for addr with handler, applying the shared
