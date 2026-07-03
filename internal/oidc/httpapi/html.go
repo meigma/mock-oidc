@@ -46,10 +46,23 @@ type BrowserOutput struct {
 	Body        []byte
 }
 
+// loginTemplateView is one login-template dropdown entry: the display name, the
+// subject the selection pre-fills into the username field, and the claim set
+// pre-serialized as a JSON object for the claims textarea (empty when the
+// template has no claims). All three render through html/template's attribute
+// auto-escaping; the browser un-escapes on read, so the pre-fill round-trips.
+type loginTemplateView struct {
+	Name       string
+	Username   string
+	ClaimsJSON string
+}
+
 // loginData is the login.html model: the action URL the form POSTs back to
-// (the same /authorize URL, query string preserved).
+// (the same /authorize URL, query string preserved), plus the configured login
+// templates (nil/empty ⇒ the dropdown is not rendered).
 type loginData struct {
-	Action string
+	Action    string
+	Templates []loginTemplateView
 }
 
 // formPostData is the form_post.html model: the self-submitting form posts ONLY

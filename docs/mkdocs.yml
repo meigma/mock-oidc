@@ -40,6 +40,7 @@ nav:
   - How-to guides:
       - Get tokens for every grant: how-to/get-tokens-for-every-grant.md
       - Drive the authorization-code flow: how-to/drive-the-authorization-code-flow.md
+      - Log in with login templates: how-to/log-in-with-login-templates.md
       - Shape token claims: how-to/shape-token-claims.md
       - Simulate expiry and time: how-to/simulate-expiry-and-time.md
       - Capture and assert requests: how-to/capture-and-assert-requests.md

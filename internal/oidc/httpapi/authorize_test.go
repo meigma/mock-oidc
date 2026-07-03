@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meigma/mock-oidc/internal/oidc"
 )
 
 // postNoRedirect POSTs a url-encoded form without following the 302, so the test
@@ -345,4 +347,148 @@ func TestAuthCodeSingleUse(t *testing.T) {
 func s256(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// testLoginTemplates builds the two-template collection the login-template edge
+// tests share: admin-alice with claims, basic-bob without.
+func testLoginTemplates(t *testing.T) oidc.LoginTemplates {
+	t.Helper()
+
+	var claims oidc.CustomClaims
+	claims.Set("email", "alice@example.com")
+	admin, err := oidc.NewLoginTemplate("admin-alice", "alice", claims)
+	require.NoError(t, err)
+	basic, err := oidc.NewLoginTemplate("basic-bob", "bob", oidc.CustomClaims{})
+	require.NoError(t, err)
+
+	templates, err := oidc.NewLoginTemplates(admin, basic)
+	require.NoError(t, err)
+	return templates
+}
+
+// TestAuthorizeLoginPageRendersTemplateDropdown verifies the login page offers
+// the configured templates as a pre-fill dropdown: an option per template
+// carrying the subject as its value and the claims JSON (attribute-escaped) in
+// data-claims, plus the pre-fill script — and that the dropdown is absent when
+// no templates are configured.
+func TestAuthorizeLoginPageRendersTemplateDropdown(t *testing.T) {
+	t.Parallel()
+
+	authorizeQuery := "/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=xyz"
+
+	t.Run("with templates", func(t *testing.T) {
+		t.Parallel()
+
+		srv := newAuthServer(t, true, testLoginTemplates(t))
+		resp, body := doGet(t, srv, authorizeQuery)
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		html := string(body)
+		assert.Contains(t, html, `id="tmpl-select"`, "template dropdown rendered")
+		assert.Contains(t, html, `>admin-alice</option>`, "template name is the option text")
+		assert.Contains(t, html, `value="alice"`, "subject rides the option value")
+		assert.Contains(t, html, `value="bob"`)
+		assert.Contains(t, html, `data-claims="{&#34;email&#34;:&#34;alice@example.com&#34;}"`,
+			"claims JSON attribute-escaped on the option")
+		assert.Contains(t, html, `data-claims=""`, "claimless template carries an empty pre-fill")
+		assert.Contains(t, html, "tmpl-select')", "pre-fill script present")
+	})
+
+	t.Run("without templates", func(t *testing.T) {
+		t.Parallel()
+
+		srv := newAuthServer(t, true)
+		resp, body := doGet(t, srv, authorizeQuery)
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.NotContains(t, string(body), "tmpl-select", "no dropdown without templates")
+	})
+}
+
+// TestAuthorizeLoginHintHeadlessIssuesCode verifies the headless path end to
+// end: a known login_hint bypasses the login page even with interactive login
+// forced, and the redeemed tokens carry the template's subject and claims.
+func TestAuthorizeLoginHintHeadlessIssuesCode(t *testing.T) {
+	t.Parallel()
+
+	srv := newAuthServer(t, true, testLoginTemplates(t))
+	resp := getNoRedirect(
+		t,
+		srv,
+		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=hl1&login_hint=admin-alice",
+	)
+
+	require.Equal(t, http.StatusFound, resp.StatusCode, "hint bypasses the login page")
+	loc, err := url.Parse(resp.Header.Get("Location"))
+	require.NoError(t, err)
+	code := loc.Query().Get("code")
+	require.NotEmpty(t, code, "code issued headlessly")
+	assert.Equal(t, "hl1", loc.Query().Get("state"))
+
+	tokResp, body := postForm(t, srv, "grant_type=authorization_code&code="+code+"&client_id=app")
+	require.Equal(t, http.StatusOK, tokResp.StatusCode, "body: %s", body)
+	var tok struct {
+		IDToken string `json:"id_token"`
+	}
+	require.NoError(t, json.Unmarshal(body, &tok))
+	claims := verifyRS256(t, tok.IDToken, fetchPublicKey(t, srv))
+	assert.Equal(t, "alice", claims["sub"], "template subject")
+	assert.Equal(t, "alice@example.com", claims["email"], "template claim folded in")
+}
+
+// TestAuthorizeLoginHintUnknown verifies an unknown template name is a hard
+// invalid_request on both error surfaces: redirected into a usable redirect_uri,
+// and rendered as the direct HTML error page when redirect_uri is absent.
+func TestAuthorizeLoginHintUnknown(t *testing.T) {
+	t.Parallel()
+
+	t.Run("redirects the error into redirect_uri", func(t *testing.T) {
+		t.Parallel()
+
+		srv := newAuthServer(t, false, testLoginTemplates(t))
+		resp := getNoRedirect(
+			t,
+			srv,
+			"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=e1&login_hint=nobody",
+		)
+
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		loc, err := url.Parse(resp.Header.Get("Location"))
+		require.NoError(t, err)
+		assert.Equal(t, "invalid_request", loc.Query().Get("error"))
+		assert.Contains(t, loc.Query().Get("error_description"), "nobody")
+		assert.Empty(t, loc.Query().Get("code"), "no code on the error path")
+	})
+
+	t.Run("renders the direct error page without redirect_uri", func(t *testing.T) {
+		t.Parallel()
+
+		srv := newAuthServer(t, false, testLoginTemplates(t))
+		resp, body := doGet(t, srv,
+			"/default/authorize?response_type=code&client_id=app&login_hint=nobody")
+
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Contains(t, string(body), "invalid_request")
+	})
+}
+
+// TestAuthorizeLoginHintFormPost pins the hint + response_mode=form_post
+// combination: the headless resolution still honors form_post and returns the
+// auto-submit page instead of a 302.
+func TestAuthorizeLoginHintFormPost(t *testing.T) {
+	t.Parallel()
+
+	srv := newAuthServer(t, true, testLoginTemplates(t))
+	resp, body := doGet(
+		t,
+		srv,
+		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=fp2&response_mode=form_post&login_hint=basic-bob",
+	)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	html := string(body)
+	assert.Contains(t, html, `action="https://client.example/cb"`, "auto-submit posts to redirect_uri")
+	assert.Contains(t, html, `name="code"`, "carries the code")
+	assert.Contains(t, html, `value="fp2"`, "carries the state")
 }

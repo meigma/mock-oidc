@@ -81,6 +81,11 @@ type Deps struct {
 	// browser-facing origin, so it stays reachable behind a remapped/mapped container
 	// port. Empty preserves the origin-derived dial (in-process httptest tests).
 	SelfAddr string
+	// LoginTemplates are the config-declared login templates the login page offers
+	// as a pre-fill dropdown. The rendering is an adapter concern; the domain
+	// consumes the same collection separately for headless login_hint resolution.
+	// Empty leaves the login page dropdown-free.
+	LoginTemplates oidc.LoginTemplates
 }
 
 // handlers binds the dependencies for the operation handler methods.

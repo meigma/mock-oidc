@@ -241,6 +241,94 @@ func TestLoadSeedTokenCallbacksRejectsReservedIssuer(t *testing.T) {
 	assert.ErrorIs(t, err, oidc.ErrReservedIssuer)
 }
 
+// TestLoadSeedLoginTemplates verifies the loginTemplates parser maps entries
+// through the domain constructors, preserving declaration order and claims.
+func TestLoadSeedLoginTemplates(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{
+		"loginTemplates": [
+			{"name": "admin-alice", "subject": "alice", "claims": {"email": "alice@example.com"}},
+			{"name": "basic-bob", "subject": "bob"}
+		]
+	}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	require.Equal(t, 2, seed.LoginTemplates.Len())
+
+	all := seed.LoginTemplates.All()
+	assert.Equal(t, oidc.LoginTemplateName("admin-alice"), all[0].Name, "declaration order preserved")
+	assert.Equal(t, oidc.Subject("alice"), all[0].Subject)
+	email, ok := all[0].Claims.Get("email")
+	require.True(t, ok)
+	assert.Equal(t, "alice@example.com", email)
+	assert.Equal(t, oidc.LoginTemplateName("basic-bob"), all[1].Name)
+	assert.Equal(t, 0, all[1].Claims.Len(), "claimless template parses to an empty set")
+}
+
+// TestLoadSeedLoginTemplatesRejectsInvalid verifies a bad template — blank name,
+// blank subject, or a duplicate name — fails LoadSeed (fail-fast startup).
+func TestLoadSeedLoginTemplatesRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		json    string
+		wantErr error
+		wantIdx string
+	}{
+		{
+			"blank name",
+			`{"loginTemplates": [{"name": "", "subject": "alice"}]}`,
+			oidc.ErrBlankTemplateName,
+			"loginTemplates[0]",
+		},
+		{
+			"blank subject",
+			`{"loginTemplates": [{"name": "a", "subject": "x"}, {"name": "b", "subject": "  "}]}`,
+			oidc.ErrBlankTemplateSubject,
+			"loginTemplates[1]",
+		},
+		{
+			"duplicate name",
+			`{"loginTemplates": [{"name": "dup", "subject": "alice"}, {"name": "dup", "subject": "bob"}]}`,
+			oidc.ErrDuplicateTemplateName,
+			"",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			vp := viper.New()
+			vp.Set("json-config", tc.json)
+
+			_, err := config.LoadSeed(vp)
+			require.Error(t, err)
+			require.ErrorIs(t, err, tc.wantErr)
+			if tc.wantIdx != "" {
+				assert.Contains(t, err.Error(), tc.wantIdx, "index-tagged error")
+			}
+		})
+	}
+}
+
+// TestLoadSeedNoLoginTemplates verifies an absent loginTemplates leaves the seed
+// empty (login_hint ignored, no dropdown).
+func TestLoadSeedNoLoginTemplates(t *testing.T) {
+	t.Parallel()
+
+	vp := viper.New()
+	vp.Set("json-config", `{"interactiveLogin": true}`)
+
+	seed, err := config.LoadSeed(vp)
+	require.NoError(t, err)
+	assert.Equal(t, 0, seed.LoginTemplates.Len())
+}
+
 // TestLoadSeedNoTokenCallbacks verifies an absent tokenCallbacks leaves the seed's
 // IssuerRecords empty (every issuer is zero-config, materialized on demand).
 func TestLoadSeedNoTokenCallbacks(t *testing.T) {

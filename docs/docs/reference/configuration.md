@@ -137,6 +137,13 @@ The document is compatible with the upstream `mock-oauth2-server` config format.
       ]
     }
   ],
+  "loginTemplates": [
+    {
+      "name": "admin-alice",
+      "subject": "alice",
+      "claims": { "email": "alice@example.com", "roles": ["admin"] }
+    }
+  ],
   "httpServer": { "ssl": {} }
 }
 ```
@@ -179,6 +186,20 @@ The document is compatible with the upstream `mock-oauth2-server` config format.
     **same shape as a `POST /_mock/scenarios` body**; see the
     [control-plane reference](control-plane.md) and
     [Shape token claims](../how-to/shape-token-claims.md).
+
+`loginTemplates` (array)
+:   Named login principals (a **mock-oidc extension** — upstream has no
+    equivalent key; the whole list is global, not per-issuer). Each entry has a
+    unique non-empty `name`, a non-empty `subject`, and an optional `claims`
+    object. Templates surface in two places: the interactive login page offers
+    them as a pre-fill dropdown, and `login_hint=<name>` on `GET /authorize`
+    resolves the template **headlessly** — the code is issued immediately, even
+    when `interactiveLogin` or `prompt=login` would otherwise force the page.
+    While templates are configured, a `login_hint` naming no template is a hard
+    `invalid_request`; with the list empty or absent, `login_hint` is ignored.
+    Template claims merge like login claims (added only where a callback or
+    registered claim has not already set the value). See
+    [Log in with login templates](../how-to/log-in-with-login-templates.md).
 
 `httpServer` (string or object)
 :   A string form is accepted for upstream compatibility. The object form

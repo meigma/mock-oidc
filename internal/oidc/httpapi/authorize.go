@@ -27,6 +27,7 @@ type authorizeParams struct {
 	Prompt              string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	LoginHint           string
 }
 
 // AuthorizeInput is the GET /{issuer}/authorize input: the issuer path segment
@@ -45,6 +46,7 @@ type AuthorizeInput struct {
 	Prompt              string `query:"prompt"`
 	CodeChallenge       string `query:"code_challenge"`
 	CodeChallengeMethod string `query:"code_challenge_method"`
+	LoginHint           string `query:"login_hint"`
 }
 
 func (i *AuthorizeInput) issuerID() string { return i.Issuer }
@@ -62,6 +64,7 @@ func (i *AuthorizeInput) params() authorizeParams {
 		Prompt:              i.Prompt,
 		CodeChallenge:       i.CodeChallenge,
 		CodeChallengeMethod: i.CodeChallengeMethod,
+		LoginHint:           i.LoginHint,
 	}
 }
 
@@ -123,11 +126,32 @@ func (h *handlers) renderAuthorizeResult(result oidc.AuthorizeResult) *BrowserOu
 // loginPage renders the interactive login form, whose action is the same
 // /authorize URL with the authorize query string preserved (so the POST carries
 // the parameters back). The URL is auto-escaped in the template's attribute
-// context.
+// context. Configured login templates render as a pre-fill dropdown; the domain
+// never sees the dropdown — a selection only populates the form fields.
 func (h *handlers) loginPage(issuer string, p authorizeParams) *BrowserOutput {
 	return htmlOutput(http.StatusOK, tmplLogin, loginData{
-		Action: authorizeActionURL(issuer, p),
+		Action:    authorizeActionURL(issuer, p),
+		Templates: h.loginTemplateViews(),
 	})
+}
+
+// loginTemplateViews projects the configured login templates into the login.html
+// dropdown model, serializing each claim set to JSON at the edge (the core stays
+// JSON-free). Nil when no templates are configured, which suppresses the dropdown.
+func (h *handlers) loginTemplateViews() []loginTemplateView {
+	all := h.deps.LoginTemplates.All()
+	if len(all) == 0 {
+		return nil
+	}
+	views := make([]loginTemplateView, 0, len(all))
+	for _, t := range all {
+		views = append(views, loginTemplateView{
+			Name:       string(t.Name),
+			Username:   string(t.Subject),
+			ClaimsJSON: claimsToJSON(t.Claims),
+		})
+	}
+	return views
 }
 
 // authorizeError renders a protocol error on the /authorize surface: it appends
@@ -162,6 +186,7 @@ func decodeAuthorizeRequest(issuer oidc.IssuerID, p authorizeParams) oidc.Author
 		State:        p.State,
 		Prompt:       oidc.Prompt(p.Prompt),
 		ResponseMode: oidc.ResponseMode(p.ResponseMode),
+		LoginHint:    p.LoginHint,
 	}
 	if p.Nonce != "" {
 		n := oidc.Nonce(p.Nonce)
@@ -192,6 +217,7 @@ func authorizeActionURL(issuer string, p authorizeParams) string {
 	setNonEmpty(q, "prompt", p.Prompt)
 	setNonEmpty(q, "code_challenge", p.CodeChallenge)
 	setNonEmpty(q, "code_challenge_method", p.CodeChallengeMethod)
+	setNonEmpty(q, "login_hint", p.LoginHint)
 
 	path := "/" + url.PathEscape(issuer) + "/authorize"
 	if enc := q.Encode(); enc != "" {

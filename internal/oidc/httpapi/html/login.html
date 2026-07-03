@@ -15,7 +15,7 @@
   h1 { margin: 0 0 .25rem; font-size: 1.4rem; }
   .notice { margin: 0 0 1.25rem; font-size: .8rem; line-height: 1.4; color: #fbbf24; }
   label { display: block; margin-bottom: 1rem; font-size: .85rem; font-weight: 600; }
-  input[type=text], textarea { width: 100%; margin-top: .35rem; padding: .6rem .7rem; font-size: .95rem;
+  input[type=text], textarea, select { width: 100%; margin-top: .35rem; padding: .6rem .7rem; font-size: .95rem;
          font-weight: 400; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #e2e8f0; }
   textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
   button { width: 100%; margin-top: .5rem; padding: .7rem; font-size: 1rem; font-weight: 600;
@@ -28,6 +28,16 @@
   <h1>mock-oidc sign-in</h1>
   <p class="notice">FOR TESTING ONLY — this server mints signed tokens for whatever identity you enter.</p>
   <form method="post" action="{{.Action}}">
+    {{if .Templates}}
+    <label>Template
+      <select id="tmpl-select">
+        <option value="">— none —</option>
+        {{range .Templates}}
+        <option value="{{.Username}}" data-claims="{{.ClaimsJSON}}">{{.Name}}</option>
+        {{end}}
+      </select>
+    </label>
+    {{end}}
     <label>Username
       <input type="text" name="username" autocomplete="username" autofocus required>
     </label>
@@ -37,5 +47,20 @@
     <button type="submit">Sign in</button>
   </form>
 </main>
+{{if .Templates}}
+<script>
+(function () {
+  var sel = document.getElementById('tmpl-select');
+  var user = document.querySelector('input[name="username"]');
+  var claims = document.querySelector('textarea[name="claims"]');
+  sel.addEventListener('change', function () {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return; // "— none —" leaves the fields untouched
+    user.value = opt.value;
+    claims.value = opt.getAttribute('data-claims') || '';
+  });
+})();
+</script>
+{{end}}
 </body>
 </html>

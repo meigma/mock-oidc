@@ -2,6 +2,20 @@
   "interactiveLogin": false,
   "rotateRefreshToken": false,
   "staticAssetsPath": "/webtest",
+  "loginTemplates": [
+    {
+      "name": "admin-alice",
+      "subject": "template-alice",
+      "claims": {
+        "email": "template-alice@example.com",
+        "template_marker": "from-template"
+      }
+    },
+    {
+      "name": "basic-bob",
+      "subject": "template-bob"
+    }
+  ],
   "tokenProvider": {
     "keyProvider": {
       "algorithm": "RS256"

@@ -92,6 +92,10 @@ redirect_uri=http://localhost:3000/callback&scope=openid&state=xyz&prompt=login"
 
 A missing `username` returns `400` with `error: invalid_request`.
 
+To log in as a **predefined identity** — picked from a dropdown on this page or
+resolved headlessly with `login_hint`, no form round-trip — see
+[Log in with login templates](log-in-with-login-templates.md).
+
 ## Add PKCE
 
 PKCE is optional and supports both `S256` and `plain`. Generate a verifier and

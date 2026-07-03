@@ -184,6 +184,75 @@ export default {
       },
     },
     {
+      name: 'login_hint=admin-alice + prompt=login → headless code; id_token carries the template identity',
+      async run(ctx) {
+        const state = ctx.newState();
+        // prompt=login would normally force the login page; the template hint
+        // must win and issue the code headlessly.
+        const { res, req } = await doAuthorize(ctx, {
+          response_type: 'code',
+          client_id: ctx.cfg.clientId,
+          scope: 'openid profile',
+          state,
+          prompt: 'login',
+          login_hint: 'admin-alice',
+        });
+        const code = res.params && res.params.code;
+        if (!code) {
+          return ctx.fail('headless code despite prompt=login', 'no code (' + JSON.stringify(res.params) + ')', { req, raw: trunc(res.text) });
+        }
+        const tok = await ctx.api.token(ctx.cfg.issuer, {
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: ctx.api.base + '/static/callback.html',
+          client_id: ctx.cfg.clientId,
+        });
+        if (tok.status !== 200 || !tok.json || !tok.json.id_token) {
+          return ctx.fail('200 + id_token', 'HTTP ' + tok.status, { req, raw: trunc(tok.text) });
+        }
+        let payload;
+        try {
+          payload = ctx.jwt.decode(tok.json.id_token).payload;
+        } catch (e) {
+          return ctx.fail('decodable id_token', String((e && e.message) || e), { req, raw: trunc(tok.text) });
+        }
+        if (payload.sub !== 'template-alice' || payload.template_marker !== 'from-template') {
+          return ctx.fail(
+            'sub=template-alice + template_marker=from-template',
+            'sub=' + String(payload.sub) + ' template_marker=' + String(payload.template_marker),
+            { req, raw: trunc(tok.text) },
+          );
+        }
+        return ctx.pass({
+          expected: 'template identity minted headlessly',
+          actual: 'sub=' + payload.sub + ', email=' + String(payload.email) + ', marker=' + payload.template_marker,
+          detail: { req },
+        });
+      },
+    },
+    {
+      name: 'login_hint=unknown → error=invalid_request at redirect_uri, no code',
+      async run(ctx) {
+        const state = ctx.newState();
+        const { res, req } = await doAuthorize(ctx, {
+          response_type: 'code',
+          client_id: ctx.cfg.clientId,
+          scope: 'openid profile',
+          state,
+          login_hint: 'no-such-template',
+        });
+        const err = res.params && res.params.error;
+        const code = res.params && res.params.code;
+        if (code) {
+          return ctx.fail('no code for an unknown template', 'code issued', { req, raw: trunc(res.text) });
+        }
+        if (err !== 'invalid_request') {
+          return ctx.fail('error=invalid_request', 'error=' + String(err) + ' (params=' + JSON.stringify(res.params) + ')', { req, raw: trunc(res.text) });
+        }
+        return ctx.pass({ expected: 'invalid_request, no code', actual: 'error=invalid_request delivered to redirect_uri', detail: { req } });
+      },
+    },
+    {
       name: 'GET /favicon.ico → 200',
       async run(ctx) {
         const res = await ctx.api.raw('GET', '/favicon.ico');
@@ -202,10 +271,12 @@ export default {
       name: 'Interactive login page mints an id_token for the entered identity',
       instructions:
         'Click Start: a popup opens the login page at /{issuer}/authorize with prompt=login ' +
-        '(scope openid profile, fresh state+nonce, redirect_uri=/static/callback.html). In the popup, ' +
-        'enter username alice and Additional claims {"email":"alice@example.com"}, then Sign in. The popup ' +
-        'lands on callback.html and posts the code back; Start exchanges it at /token and reports the ' +
-        'id_token sub + email. PASS when sub is "alice" and email is "alice@example.com".',
+        '(scope openid profile, fresh state+nonce, redirect_uri=/static/callback.html). The page shows a ' +
+        'Template dropdown (admin-alice / basic-bob) — pick one and confirm it PRE-FILLS the username and ' +
+        'claims fields and that both stay editable. Then enter username alice and Additional claims ' +
+        '{"email":"alice@example.com"} (overwriting any pre-fill), and Sign in. The popup lands on ' +
+        'callback.html and posts the code back; Start exchanges it at /token and reports the id_token ' +
+        'sub + email. PASS when sub is "alice" and email is "alice@example.com".',
       async start(ctx) {
         const base = ctx.api.base;
         const issuer = ctx.cfg.issuer;

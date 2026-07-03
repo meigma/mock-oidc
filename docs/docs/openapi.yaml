@@ -920,6 +920,11 @@ paths:
           name: code_challenge_method
           schema:
             type: string
+        - explode: false
+          in: query
+          name: login_hint
+          schema:
+            type: string
       responses:
         "302":
           content:
@@ -1000,6 +1005,11 @@ paths:
         - explode: false
           in: query
           name: code_challenge_method
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: login_hint
           schema:
             type: string
       requestBody:
