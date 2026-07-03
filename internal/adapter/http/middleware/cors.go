@@ -21,10 +21,12 @@ const corsAllowMethods = "POST, GET, OPTIONS"
 // a browser-based client works with zero configuration; because credentialled
 // CORS forbids the "*" wildcard, the origin is always reflected verbatim, never
 // starred. A non-empty allowlist tightens the reflection to exactly those
-// origins. A preflight (OPTIONS carrying Access-Control-Request-Method) is
-// answered 204 with the fixed method set and the echoed
-// Access-Control-Request-Headers; other requests fall through to the handler with
-// the CORS response headers attached.
+// origins. A preflight — ANY OPTIONS request, on ANY path — is answered 204 with
+// the fixed method set and the echoed Access-Control-Request-Headers; upstream's
+// CorsInterceptor treats the bare method as the preflight signal (a real browser
+// preflight also carries Access-Control-Request-Method, but the 204 does not
+// depend on it). Other requests fall through to the handler with the CORS
+// response headers attached.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	allow := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
@@ -34,8 +36,7 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			preflight := r.Method == http.MethodOptions &&
-				r.Header.Get("Access-Control-Request-Method") != ""
+			preflight := r.Method == http.MethodOptions
 
 			if origin == "" || !originAllowed(origin, allow) {
 				// No Origin, or an origin outside the allowlist: emit no CORS
