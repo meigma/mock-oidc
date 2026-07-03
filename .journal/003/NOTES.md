@@ -123,3 +123,21 @@ Three follow-ups from the user, all done:
   to selected repositories, mock-oidc not granted; org admin needed). Until
   granted, no v0.1.0 release PR can be created. Re-run release-please.yml
   after granting.
+
+## 2026-07-03 08:32 — Release credentials wired; v0.1.0 release PR open
+Blocker resolved per user instruction: pulled the `meigma-release-please`
+item from the Homelab 1Password vault via `op` (fields: app_id, client_id,
+key.pem attachment) and set repo-level `MEIGMA_RELEASE_APP_ID` variable +
+`MEIGMA_RELEASE_APP_PRIVATE_KEY` secret via `gh` (key piped op→gh, never
+printed). Release Please then ran green but proposed **1.0.0** — with no
+prior tag it bootstraps to its default initial version, ignoring the 0.0.0
+manifest. Fixed with `initial-version: 0.1.0` in release-please-config.json
+(PR #21, inert after first release). **PR #20 regenerated as
+`chore(master): release 0.1.0`** — manifest/melange/apko stamps all 0.1.0,
+changelog covers slices 0–6 + the two acceptance fixes. Left open for the
+user to merge when ready (release lands as a draft per config).
+Gotcha recorded: release-please ignores the manifest version at bootstrap
+(no tag) — `initial-version` is the knob, not manifest 0.0.0 alone.
+Note: create-github-app-token warns `app-id` input is deprecated (use
+client-id); the 1Password item carries client_id if we want to migrate the
+workflow later.
