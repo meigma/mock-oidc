@@ -55,8 +55,32 @@
   via http.ServeFile redirect) and PR #16 (sub-less tokens on non-interactive
   auth-code; now UUID fallback, upstream parity). The reusable test console lives in
   `webtest/` (PR #17; see webtest/README.md — serve via staticAssetsPath, never
-  file://). Full report: `.journal/003/acceptance-report.md`. Pre-publish blocker
-  remaining: **no LICENSE file** (README §License).
+  file://). Full report: `.journal/003/acceptance-report.md`.
+- **v0.1.0 RELEASED (2026-07-03, session 003):** `master` at `b97dc99`, tag `v0.1.0`,
+  image `ghcr.io/meigma/mock-oidc:v0.1.0` (multi-arch, cosign-signed, SLSA provenance
+  for binary + image, verified). The GitHub release is still a DRAFT pending a human
+  publish. Repo is dual-licensed **Apache-2.0 OR MIT** (LICENSE-APACHE/LICENSE-MIT).
+  Docs are now a Diátaxis MkDocs site under `docs/docs/` (tutorial/how-to/reference/
+  explanation) with a slim ~120-line README; contributor detail lives in CONTRIBUTING.md.
+- **Release-chain facts for future maintainers:** there is intentionally NO `ghd.toml`
+  / ghd distribution (removed PR #22 — do not re-add). The bootstrap version is pinned
+  by `initial-version: 0.1.0` in `release-please-config.json` (release-please ignores
+  the manifest version when no tag exists — that knob, not the manifest, sets the first
+  release). Release dry-run jobs (`release-dry-run.yml`) execute the workflow from the
+  PR's HEAD branch and only run on `release-please--*` branches, so a release PR cut
+  before a workflow fix keeps running the OLD workflow — recreate the release PR
+  (close + delete branch + re-dispatch release-please) to pick up workflow fixes.
+  Release App creds are repo-level (`MEIGMA_RELEASE_APP_ID` var +
+  `MEIGMA_RELEASE_APP_PRIVATE_KEY` secret), sourced from 1Password
+  `op://Homelab/meigma-release-please` (fields app_id, client_id, key.pem attachment).
+- **Ops gotcha (2026-07-03):** a `gh` token missing the `workflow` scope cannot
+  `gh pr merge`/`update-branch` a PR that touches `.github/workflows/*` unless the
+  resulting file content was already pushed by an authorized identity — for Dependabot
+  PRs, comment `@dependabot rebase` then merge. golangci-lint's cache goes stale when a
+  worktree it indexed is removed (`root:lint` fails with "no such file or directory");
+  fix with `mise x -- golangci-lint cache clean`. `wt remove` deletes in the background
+  and races `mise run image-local` (melange snapshots the repo incl. `.git/wt/trash/`);
+  let removal settle before building the image.
 - Ops gotchas (2026-07-03): golangci-lint's cache goes stale when a worktree it
   indexed is removed — `root:lint` fails with "no such file or directory" noise;
   fix with `mise x -- golangci-lint cache clean`. `wt remove` deletes in the

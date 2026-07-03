@@ -1,6 +1,6 @@
 ---
 id: 003
-title: New session — goal pending
+title: Browser acceptance pass, publish prep, and the v0.1.0 release
 started: 2026-07-02
 ---
 
@@ -219,3 +219,19 @@ independent of #23.
   publish). Publishing it is the final step, left to the user.**
 - Session goal complete: server accepted, docs shipped, v0.1.0 released end to
   end and provenance-verified. Ready for session close.
+
+## 2026-07-03 11:36 — Close
+Session 003 closed. All work landed on `master` and merged via squash PRs;
+no open PRs, no stray implementation worktrees (only journal + master remain);
+`master` at `b97dc99`, up to date, no journal contamination.
+Merged this session: #1–#6 (dependabot), #15 (static index fix), #16 (subject
+UUID fix), #17 (webtest console), #18 (dual license), #19 (release reset), #21
+(initial-version pin), #22 (drop ghd + smoke-test fix), #24 (Diátaxis docs),
+#23 (release 0.1.0). Repo config applied; release App creds wired from 1Password.
+**v0.1.0 released and provenance-verified** (image + binary cosign/SLSA);
+the GitHub release remains a DRAFT for the user to publish.
+SUMMARY.md written; INDEX.md row → complete; TECH_NOTES.md updated with the
+release state + release-chain/ops gotchas. Handoff: publish the draft release
+when ready; optional follow-ups are the attest-image artifact-metadata warning,
+the create-github-app-token app-id→client-id migration, and the `.agents/`
+template-go-api remnants.
