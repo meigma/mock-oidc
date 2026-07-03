@@ -109,10 +109,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Stage and validate ghd release assets
+      - name: Stage and validate release assets
         env:
           RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
-        run: python3 .github/scripts/stage_ghd_release_assets.py --tag "$RELEASE_TAG"
+        run: python3 .github/scripts/stage_release_assets.py --tag "$RELEASE_TAG"
 
       - name: Smoke test release binary
         env:
@@ -363,7 +363,10 @@ jobs:
           set -euo pipefail
 
           docker run --rm "$IMAGE_REF" --version
-          docker run --rm "$IMAGE_REF" openapi | grep -Fq "openapi: 3.0.3"
+          # Capture before grepping: grep -q exits at the first match and the
+          # resulting broken pipe fails `docker run` under pipefail.
+          docker run --rm "$IMAGE_REF" openapi > openapi-smoke.yaml
+          grep -Fq "openapi: 3.0.3" openapi-smoke.yaml
 
       - name: Sign image (keyless, Sigstore/Fulcio via OIDC)
         env:
@@ -427,7 +430,6 @@ jobs:
             echo "gh release view $RELEASE_TAG --repo $GITHUB_REPOSITORY --json isDraft,assets"
             echo "asset=\"mock-oidc_${RELEASE_VERSION}_\$(go env GOOS)_\$(go env GOARCH)\""
             echo "gh attestation verify \"dist/release-assets/\${asset}\" --repo \"$GITHUB_REPOSITORY\" --signer-workflow \"$GITHUB_REPOSITORY/.github/workflows/attest.yml\" --source-ref \"refs/tags/$RELEASE_TAG\" --deny-self-hosted-runners"
-            echo "ghd download \"$GITHUB_REPOSITORY/mock-oidc@${RELEASE_VERSION}\" --output \"\$(mktemp -d)\""
             echo '```'
             echo
             echo "Container verification commands:"
