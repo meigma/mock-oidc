@@ -117,8 +117,24 @@ func TestAuthorizeLoginHintMatrix(t *testing.T) {
 		{"known hint beats interactiveLogin", true, "admin-alice", true, "", oidc.AuthorizeRedirect, false},
 		{"known hint beats prompt=login", true, "admin-alice", true, oidc.PromptLogin, oidc.AuthorizeRedirect, false},
 		{"unknown hint is invalid_request", true, "nobody", false, "", 0, true},
-		{"hint ignored without templates (interactive)", false, "admin-alice", true, "", oidc.AuthorizeShowLogin, false},
-		{"hint ignored without templates (direct code)", false, "admin-alice", false, "", oidc.AuthorizeRedirect, false},
+		{
+			"hint ignored without templates (interactive)",
+			false,
+			"admin-alice",
+			true,
+			"",
+			oidc.AuthorizeShowLogin,
+			false,
+		},
+		{
+			"hint ignored without templates (direct code)",
+			false,
+			"admin-alice",
+			false,
+			"",
+			oidc.AuthorizeRedirect,
+			false,
+		},
 		{"empty hint with templates shows login", true, "", true, "", oidc.AuthorizeShowLogin, false},
 	}
 

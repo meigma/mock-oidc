@@ -144,7 +144,7 @@ func parseLoginClaims(raw string) (oidc.CustomClaims, bool) {
 // claimsToJSON serializes an ordered claim set into a compact JSON object for
 // the login-page template pre-fill — the inverse of parseLoginClaims. The object
 // is built member-by-member so insertion order survives (marshaling a map would
-// randomize it); json.Marshal escapes <, >, and & by default, so the result is
+// randomize it); [json.Marshal] escapes <, >, and & by default, so the result is
 // safe for the attribute context it renders into. Empty claims yield "" (a blank
 // textarea), and a marshal failure — unreachable for config-parsed, JSON-native
 // values — degrades to "" rather than a partial object.

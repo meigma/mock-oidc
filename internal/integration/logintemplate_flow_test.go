@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"testing"
@@ -95,9 +96,7 @@ func TestContainerLoginTemplates(t *testing.T) {
 
 	// 2. A known login_hint bypasses the page and issues the code headlessly.
 	hinted := url.Values{}
-	for k, v := range authQuery {
-		hinted[k] = v
-	}
+	maps.Copy(hinted, authQuery)
 	hinted.Set("login_hint", "admin-alice")
 	code, state := authorizeForCode(ctx, t, disco.AuthorizationEndpoint+"?"+hinted.Encode())
 	require.NotEmpty(t, code, "code issued headlessly despite interactiveLogin:true")
@@ -138,9 +137,7 @@ func TestContainerLoginTemplates(t *testing.T) {
 
 	// 4. An unknown hint fails loudly: error redirected into redirect_uri.
 	unknown := url.Values{}
-	for k, v := range authQuery {
-		unknown[k] = v
-	}
+	maps.Copy(unknown, authQuery)
 	unknown.Set("login_hint", "nobody")
 	errStatus, errLoc := authorizeNoRedirect(ctx, t, disco.AuthorizationEndpoint+"?"+unknown.Encode())
 	require.Equal(t, http.StatusFound, errStatus)

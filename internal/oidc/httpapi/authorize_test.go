@@ -412,8 +412,11 @@ func TestAuthorizeLoginHintHeadlessIssuesCode(t *testing.T) {
 	t.Parallel()
 
 	srv := newAuthServer(t, true, testLoginTemplates(t))
-	resp := getNoRedirect(t, srv,
-		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=hl1&login_hint=admin-alice")
+	resp := getNoRedirect(
+		t,
+		srv,
+		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=hl1&login_hint=admin-alice",
+	)
 
 	require.Equal(t, http.StatusFound, resp.StatusCode, "hint bypasses the login page")
 	loc, err := url.Parse(resp.Header.Get("Location"))
@@ -443,8 +446,11 @@ func TestAuthorizeLoginHintUnknown(t *testing.T) {
 		t.Parallel()
 
 		srv := newAuthServer(t, false, testLoginTemplates(t))
-		resp := getNoRedirect(t, srv,
-			"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=e1&login_hint=nobody")
+		resp := getNoRedirect(
+			t,
+			srv,
+			"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=e1&login_hint=nobody",
+		)
 
 		require.Equal(t, http.StatusFound, resp.StatusCode)
 		loc, err := url.Parse(resp.Header.Get("Location"))
@@ -474,8 +480,11 @@ func TestAuthorizeLoginHintFormPost(t *testing.T) {
 	t.Parallel()
 
 	srv := newAuthServer(t, true, testLoginTemplates(t))
-	resp, body := doGet(t, srv,
-		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=fp2&response_mode=form_post&login_hint=basic-bob")
+	resp, body := doGet(
+		t,
+		srv,
+		"/default/authorize?response_type=code&client_id=app&redirect_uri=https://client.example/cb&state=fp2&response_mode=form_post&login_hint=basic-bob",
+	)
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	html := string(body)

@@ -308,7 +308,7 @@ func TestLoadSeedLoginTemplatesRejectsInvalid(t *testing.T) {
 
 			_, err := config.LoadSeed(vp)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tc.wantErr)
+			require.ErrorIs(t, err, tc.wantErr)
 			if tc.wantIdx != "" {
 				assert.Contains(t, err.Error(), tc.wantIdx, "index-tagged error")
 			}

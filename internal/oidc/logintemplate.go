@@ -21,14 +21,6 @@ type LoginTemplate struct {
 	Claims  CustomClaims
 }
 
-// Submission resolves the template into the LoginSubmission the authorize
-// pipeline already understands, so template claims inherit login-claim
-// semantics (merged putIfAbsent at mint; a mapping/registered claim wins).
-// Claims are cloned so per-request merges never mutate the shared template.
-func (t LoginTemplate) Submission() LoginSubmission {
-	return LoginSubmission{Username: t.Subject, Claims: t.Claims.Clone()}
-}
-
 // Config-time login-template sentinels for [errors.Is]. They surface at startup
 // via the JSON-config loader (fail-fast), never on a request path.
 var (
@@ -49,6 +41,14 @@ func NewLoginTemplate(name string, subject Subject, claims CustomClaims) (LoginT
 		return LoginTemplate{}, ErrBlankTemplateSubject
 	}
 	return LoginTemplate{Name: LoginTemplateName(name), Subject: subject, Claims: claims}, nil
+}
+
+// Submission resolves the template into the LoginSubmission the authorize
+// pipeline already understands, so template claims inherit login-claim
+// semantics (merged putIfAbsent at mint; a mapping/registered claim wins).
+// Claims are cloned so per-request merges never mutate the shared template.
+func (t LoginTemplate) Submission() LoginSubmission {
+	return LoginSubmission{Username: t.Subject, Claims: t.Claims.Clone()}
 }
 
 // LoginTemplates is the ordered, name-indexed template collection. The zero
