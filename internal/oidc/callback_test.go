@@ -11,7 +11,8 @@ import (
 )
 
 // TestDefaultTokenCallbackSubject confirms client_credentials resolves sub to the
-// client_id, while other grants use the pre-resolved input subject.
+// client_id, other grants use the pre-resolved input subject, and a fully
+// unresolved subject falls back to a per-callback UUID (never a sub-less token).
 func TestDefaultTokenCallbackSubject(t *testing.T) {
 	t.Parallel()
 
@@ -26,6 +27,16 @@ func TestDefaultTokenCallbackSubject(t *testing.T) {
 
 	otherSub := cb.Subject(oidc.CallbackInput{Grant: oidc.GrantPassword, Subject: "alice"})
 	assert.Equal(t, oidc.Subject("alice"), otherSub)
+
+	// Non-interactive authorization_code has no login subject and nothing
+	// configured: the callback must still mint a subject (upstream parity is
+	// a UUID default), stable for this callback and distinct across callbacks.
+	empty := oidc.CallbackInput{Grant: oidc.GrantAuthorizationCode, Client: oidc.Client{ID: "app"}}
+	fallback := cb.Subject(empty)
+	assert.NotEmpty(t, fallback)
+	assert.Equal(t, fallback, cb.Subject(empty), "fallback is stable per callback")
+	assert.NotEqual(t, fallback, oidc.NewDefaultTokenCallback("other").Subject(empty),
+		"fallback differs across callbacks")
 }
 
 // TestDefaultTokenCallbackAudience walks the 4-step precedence chain.
