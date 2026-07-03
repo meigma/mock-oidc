@@ -184,9 +184,12 @@ type RequestOrigin struct {
 
 // ResolveBaseURL applies upstream's proxy-aware precedence: scheme =
 // X-Forwarded-Proto ?: original; host = X-Forwarded-Host ?: original; port =
-// X-Forwarded-Port > Host port > scheme default. It returns (BaseURL, error)
-// because forwarded headers are client-controlled and malformable; callers MUST
-// handle the error.
+// X-Forwarded-Port > X-Forwarded-Host port > Host port > scheme default. A real
+// reverse proxy may forward X-Forwarded-Host with an embedded port (e.g.
+// "idp.example.com:8443"); that port is split out so it participates in the
+// precedence chain rather than being left embedded in the host (which would emit
+// a double-port authority). It returns (BaseURL, error) because forwarded headers
+// are client-controlled and malformable; callers MUST handle the error.
 func ResolveBaseURL(o RequestOrigin) (BaseURL, error) {
 	scheme := o.Scheme
 	if o.FwdProto != "" {
@@ -198,11 +201,17 @@ func ResolveBaseURL(o RequestOrigin) (BaseURL, error) {
 	}
 
 	host := o.Host
+	port := o.Port
 	if o.FwdHost != "" {
-		host = o.FwdHost
+		h, p, ok := splitHostPort(o.FwdHost)
+		host = h
+		if ok {
+			// An embedded X-Forwarded-Host port outranks the inbound Host port
+			// but is still overridable by an explicit X-Forwarded-Port below.
+			port = p
+		}
 	}
 
-	port := o.Port
 	if o.FwdPort != "" {
 		p, err := strconv.Atoi(o.FwdPort)
 		if err != nil {
@@ -211,6 +220,24 @@ func ResolveBaseURL(o RequestOrigin) (BaseURL, error) {
 		port = p
 	}
 	return NewBaseURL(scheme, host, port)
+}
+
+// splitHostPort separates a trailing :port from a host[:port] authority using
+// string ops only (the core bans net; see ParseBaseURL). It reports ok=true only
+// when a numeric :port suffix is present — a bare host, or a non-numeric suffix,
+// is returned verbatim with ok=false so the caller keeps its existing port. IPv6
+// literals are the documented parity gap (Decision D-2): a bracketless "::1"
+// mis-splits exactly as ParseBaseURL already does.
+func splitHostPort(authority string) (string, int, bool) {
+	i := strings.LastIndexByte(authority, ':')
+	if i < 0 {
+		return authority, 0, false
+	}
+	port, err := strconv.Atoi(authority[i+1:])
+	if err != nil {
+		return authority, 0, false
+	}
+	return authority[:i], port, true
 }
 
 // Issuer is a materialized issuer: its identity, the base URL it advertises for
